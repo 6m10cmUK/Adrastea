@@ -387,7 +387,7 @@ const Adrastea: React.FC = () => {
   const roomRole = (user ? ((memberRole ?? joinedRole) ?? 'guest') : 'guest') as 'owner' | 'sub_owner' | 'user' | 'guest';
 
   const handleRoomCreated = (newRoomId: string) => {
-    navigate(`/adrastea/${newRoomId}`);
+    navigate(`/${newRoomId}`);
   };
 
   // 認証ローディング（全体の最初のステップ）

@@ -398,10 +398,10 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
   // --- Delete room ---
   const deleteRoom = useCallback(async () => {
     if (!user) return;
-    const match = window.location.pathname.match(/\/adrastea\/([^/]+)/);
+    const match = window.location.pathname.match(/\/([^/]+)/);
     const roomId = match?.[1];
     if (!roomId) {
-      window.location.href = '/adrastea/';
+      window.location.href = '/';
       return;
     }
     const { supabase } = await import('../services/supabase');
@@ -409,7 +409,7 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
     if (error) {
       console.error('ルーム削除失敗:', error);
     }
-    window.location.href = '/adrastea/';
+    window.location.href = '/';
   }, [user]);
 
   // --- Shortcut callback ---

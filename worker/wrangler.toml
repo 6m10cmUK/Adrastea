@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
 [vars]
-ALLOWED_ORIGINS = "http://localhost:6100,https://localhost:6100,https://adrastea.app"
+ALLOWED_ORIGINS = "http://localhost:6100,https://localhost:6100,https://adrastea.app,https://macbook-pro.tailc35afd.ts.net:6100,https://100.121.7.83:6100"
 SUPABASE_URL = "https://yrbunpqdbhlgxagifpau.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlyYnVucHFkYmhsZ3hhZ2lmcGF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTY4NDIsImV4cCI6MjA5MDA3Mjg0Mn0.GbwbufUNIL7vTOWloB9V52bLyo9R8fLDfSKAp4arHp8"
 

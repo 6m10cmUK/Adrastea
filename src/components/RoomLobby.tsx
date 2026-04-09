@@ -680,12 +680,12 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ onRoomCreated }) => {
                 userSelect: 'all',
               }}
             >
-              {`${window.location.origin}/adrastea/${shareRoom.id}`}
+              {`${window.location.origin}/${shareRoom.id}`}
             </div>
             <AdButton
               variant="primary"
               onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/adrastea/${shareRoom.id}`);
+                navigator.clipboard.writeText(`${window.location.origin}/${shareRoom.id}`);
                 setCopied(true);
               }}
             >
