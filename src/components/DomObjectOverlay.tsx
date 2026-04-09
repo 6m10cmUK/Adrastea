@@ -1,7 +1,7 @@
 import { forwardRef, memo, useCallback, useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { BoardObject, Scene, Character, Asset } from '../types/adrastea.types';
-import { GRID_SIZE } from './Board';
+import { GRID_SIZE, MIN_SCALE, MAX_SCALE } from './Board';
 import { DropdownMenu, AdModal } from './ui';
 import { shortcutLabel } from './ui/DropdownMenu';
 import { useAdrasteaContext } from '../contexts/AdrasteaContext';
@@ -576,10 +576,31 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
           const canScroll = popupRef.current.scrollHeight > popupRef.current.clientHeight;
           if (canScroll) {
             e.stopPropagation();
-            e.preventDefault();
             popupRef.current.scrollTop += e.deltaY;
+            return;
           }
         }
+        // メモスクロール以外: Stage を直接操作してズーム
+        if (__blockBoardWheelCount > 0) return;
+        const stage = stageRef.current;
+        if (!stage) return;
+        e.stopPropagation();
+        const oldScale = stage.scaleX();
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+        const scaleBy = 1.08;
+        const newScale = e.deltaY < 0
+          ? Math.min(oldScale * scaleBy, MAX_SCALE)
+          : Math.max(oldScale / scaleBy, MIN_SCALE);
+        const mousePointTo = {
+          x: (pointer.x - stage.x()) / oldScale,
+          y: (pointer.y - stage.y()) / oldScale,
+        };
+        stage.scale({ x: newScale, y: newScale });
+        stage.position({
+          x: pointer.x - mousePointTo.x * newScale,
+          y: pointer.y - mousePointTo.y * newScale,
+        });
       }}
     >
       {children}
@@ -1309,10 +1330,30 @@ const DomCharacterItem = memo(function DomCharacterItem({
           const canScroll = popupRef.current.scrollHeight > popupRef.current.clientHeight;
           if (canScroll) {
             e.stopPropagation();
-            e.preventDefault();
             popupRef.current.scrollTop += e.deltaY;
+            return;
           }
         }
+        if (__blockBoardWheelCount > 0) return;
+        const stage = stageRef.current;
+        if (!stage) return;
+        e.stopPropagation();
+        const oldScale = stage.scaleX();
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+        const scaleBy = 1.08;
+        const newScale = e.deltaY < 0
+          ? Math.min(oldScale * scaleBy, MAX_SCALE)
+          : Math.max(oldScale / scaleBy, MIN_SCALE);
+        const mousePointTo = {
+          x: (pointer.x - stage.x()) / oldScale,
+          y: (pointer.y - stage.y()) / oldScale,
+        };
+        stage.scale({ x: newScale, y: newScale });
+        stage.position({
+          x: pointer.x - mousePointTo.x * newScale,
+          y: pointer.y - mousePointTo.y * newScale,
+        });
       }}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClickCharacter?.(char.id); }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenuPos({ x: e.clientX, y: e.clientY }); }}

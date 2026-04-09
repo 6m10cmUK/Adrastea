@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { theme } from '../styles/theme';
 import { useAssets } from '../hooks/useAssets';
 import { useAdrasteaContext } from '../contexts/AdrasteaContext';
-import { X, Upload, Link, ImageOff, Trash2, Pencil } from 'lucide-react';
+import { X, Upload, Link, ImageOff, Trash2, Pencil, ArrowUpDown } from 'lucide-react';
 import type { Asset } from '../types/adrastea.types';
 import { useAnimatedBlobSrc } from './DomObjectOverlay';
 import { AdTagInput, AdModal, AdButton, AdInput, ConfirmModal, Tooltip } from './ui';
@@ -39,7 +39,7 @@ function LazyVisible({ children, height }: { children: React.ReactNode; height?:
 }
 
 // --- DnD オーバーレイフック ---
-function useDragDropOverlay(onDrop: (file: File) => void) {
+function useDragDropOverlay(onDrop: (files: File[]) => void) {
   const [dragging, setDragging] = useState(false);
   const dragCounter = useRef(0);
 
@@ -67,8 +67,8 @@ function useDragDropOverlay(onDrop: (file: File) => void) {
     e.stopPropagation();
     dragCounter.current = 0;
     setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) onDrop(file);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length > 0) onDrop(files);
   }, [onDrop]);
 
   return { dragging, handleDragEnter, handleDragLeave, handleDragOver, handleDrop };
@@ -96,6 +96,18 @@ export function AssetLibraryModal({ onClose, onSelect, initialTab, autoTags }: A
     return [...new Set(tags)];
   });
   const [searchText, setSearchText] = useState('');
+  type SortKey = 'created_desc' | 'created_asc' | 'name_asc' | 'name_desc';
+  const SORT_LABELS: Record<SortKey, string> = {
+    created_desc: '登録日 新しい順',
+    created_asc: '登録日 古い順',
+    name_asc: 'ファイル名 A→Z',
+    name_desc: 'ファイル名 Z→A',
+  };
+  const SORT_CYCLE: SortKey[] = ['created_desc', 'created_asc', 'name_asc', 'name_desc'];
+  const [sortKey, setSortKey] = useState<SortKey>(() => {
+    return (localStorage.getItem('adrastea:asset-sort') as SortKey) || 'created_desc';
+  });
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const defaultTags = useMemo(() => [...new Set([...(roomName ? [roomName] : []), ...(autoTags ?? [])])], [roomName, autoTags]);
   const { assets, loading, uploadAsset, uploadAudioAsset, addAssetByUrl, deleteAsset, updateAssetTags, updateAssetTitle } = useAssets({ disabled: ctx.isDemo, defaultTags });
 
@@ -196,35 +208,57 @@ export function AssetLibraryModal({ onClose, onSelect, initialTab, autoTags }: A
       );
     }
     return true;
+  }).sort((a, b) => {
+    switch (sortKey) {
+      case 'created_desc': return b.created_at - a.created_at;
+      case 'created_asc': return a.created_at - b.created_at;
+      case 'name_asc': return (a.title || a.filename).localeCompare(b.title || b.filename);
+      case 'name_desc': return (b.title || b.filename).localeCompare(a.title || a.filename);
+      default: return 0;
+    }
   });
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-  const handleUpload = useCallback(
-    async (file: File) => {
+  const handleUploadSingle = useCallback(
+    async (file: File): Promise<Asset | null> => {
       if (file.size > MAX_FILE_SIZE) {
         ctx.showToast(`ファイルサイズが大きすぎます（${(file.size / 1024 / 1024).toFixed(1)}MB / 上限5MB）`, 'error');
-        onClose();
-        return;
+        return null;
       }
+      let result: Asset | null = null;
+      if (activeTab === 'audio') {
+        result = await uploadAudioAsset(file);
+      } else {
+        result = await uploadAsset(file);
+      }
+      // タグ検索中なら検索タグを追加付与
+      if (result && hasSearchTags) {
+        const missingTags = searchTags.filter(t => !result.tags.includes(t));
+        if (missingTags.length > 0) {
+          await updateAssetTags(result.id, [...result.tags, ...missingTags]);
+        }
+      }
+      return result;
+    },
+    [activeTab, uploadAsset, uploadAudioAsset, hasSearchTags, searchTags, updateAssetTags]
+  );
+
+  const handleUpload = useCallback(
+    async (files: File[]) => {
       setUploading(true);
       try {
-        let result: Asset | null = null;
-        if (activeTab === 'audio') {
-          result = await uploadAudioAsset(file);
-        } else {
-          result = await uploadAsset(file);
+        let firstResult: Asset | null = null;
+        for (const file of files) {
+          const result = await handleUploadSingle(file);
+          if (!firstResult && result) firstResult = result;
         }
-        // タグ検索中なら検索タグを追加付与
-        if (result && hasSearchTags) {
-          const missingTags = searchTags.filter(t => !result.tags.includes(t));
-          if (missingTags.length > 0) {
-            await updateAssetTags(result.id, [...result.tags, ...missingTags]);
-          }
-        }
-        if (result && onSelect) {
+        if (firstResult && onSelect) {
           previewAudioRef.current?.pause();
-          onSelect(result.url, result.id, result.title || result.filename, result.width, result.height);
+          onSelect(firstResult.url, firstResult.id, firstResult.title || firstResult.filename, firstResult.width, firstResult.height);
+        }
+        if (files.length > 1) {
+          ctx.showToast(`${files.length}件のファイルをアップロードしました`, 'success');
         }
       } catch (err) {
         console.error('アップロード失敗:', err);
@@ -235,7 +269,7 @@ export function AssetLibraryModal({ onClose, onSelect, initialTab, autoTags }: A
         setAddMode(null);
       }
     },
-    [activeTab, uploadAsset, uploadAudioAsset, onSelect, hasSearchTags, searchTags, updateAssetTags]
+    [handleUploadSingle, onSelect]
   );
 
   const dnd = useDragDropOverlay(handleUpload);
@@ -584,7 +618,9 @@ export function AssetLibraryModal({ onClose, onSelect, initialTab, autoTags }: A
         )}
         {/* ヘッダー */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <h3 style={{ margin: 0, fontSize: '1rem' }}>アセットライブラリ</h3>
+          <h3 style={{ margin: 0, fontSize: '1rem' }}>
+            アセットライブラリ{onSelect && (activeTab === 'audio' ? '｜音声を設定' : '｜画像を設定')}
+          </h3>
           <button
             onClick={onClose}
             style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
@@ -664,6 +700,52 @@ export function AssetLibraryModal({ onClose, onSelect, initialTab, autoTags }: A
               }}
             />
           </div>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <Tooltip label={SORT_LABELS[sortKey]}>
+              <button
+                onClick={() => setSortMenuOpen(prev => !prev)}
+                style={{
+                  background: theme.bgInput, border: `1px solid ${theme.borderInput}`,
+                  borderRadius: 0, color: theme.textSecondary, cursor: 'pointer',
+                  padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center',
+                }}
+              >
+                <ArrowUpDown size={14} />
+              </button>
+            </Tooltip>
+            {sortMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute', top: '100%', right: 0, zIndex: 20,
+                  marginTop: '2px', background: theme.bgElevated,
+                  border: `1px solid ${theme.border}`, boxShadow: theme.shadowMd,
+                  minWidth: '160px',
+                }}
+              >
+                {SORT_CYCLE.map(key => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setSortKey(key);
+                      localStorage.setItem('adrastea:asset-sort', key);
+                      setSortMenuOpen(false);
+                    }}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '6px 12px', fontSize: '0.8rem',
+                      background: key === sortKey ? theme.bgHover : 'transparent',
+                      color: key === sortKey ? theme.textPrimary : theme.textSecondary,
+                      border: 'none', cursor: 'pointer',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = theme.bgHover; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = key === sortKey ? theme.bgHover : 'transparent'; }}
+                  >
+                    {SORT_LABELS[key]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {activeTab === 'audio' ? (
             <button
               onClick={() => setAddMode('url')}
@@ -728,10 +810,11 @@ export function AssetLibraryModal({ onClose, onSelect, initialTab, autoTags }: A
           ref={fileInputRef}
           type="file"
           accept={activeTab === 'audio' ? 'audio/*' : 'image/*'}
+          multiple
           style={{ display: 'none' }}
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleUpload(file);
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) handleUpload(files);
             e.target.value = '';
           }}
         />

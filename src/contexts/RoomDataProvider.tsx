@@ -229,7 +229,7 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
     const ids = [...assetIds];
     supabase
       .from('assets')
-      .select('id,uid,url,r2_key,filename,title,size_bytes,width,height,tags,asset_type,created_at')
+      .select('id,owner_id,url,r2_key,filename,title,size_bytes,width,height,tags,asset_type,created_at')
       .in('id', ids)
       .then(({ data: assets, error }) => {
         if (error || !assets) {

@@ -25,6 +25,9 @@ const pendingFetches = new Set<string>();
 const failedFetches = new Set<string>();
 let fetchSingleAssetFn: ((id: string) => void) | null = null;
 
+// primeAssetCache 完了後に useAssets の state を同期するためのリスナー
+const cacheListeners = new Set<() => void>();
+
 /** asset_id から URL を解決する。モジュールレベルキャッシュを直接参照。キャッシュミス時はバックグラウンドフェッチをトリガー。 */
 export function resolveAssetId(assetId: string | null | undefined): string | null {
   if (!assetId) return null;
@@ -49,6 +52,8 @@ export function primeAssetCache(assets: Asset[], uid: string | undefined): void 
   const newAssets = assets.filter(a => !existingIds.has(a.id));
   if (newAssets.length > 0) {
     assetCache = { uid, assets: [...newAssets, ...assetCache.assets] };
+    // useAssets の state を同期
+    cacheListeners.forEach(fn => fn());
   }
 }
 
@@ -164,6 +169,18 @@ export function useAssets(options?: { disabled?: boolean; defaultTags?: string[]
       fetchSingleAssetFn = null;
     };
   }, [fetchSingleAsset]);
+
+  // primeAssetCache からの通知で state を同期
+  useEffect(() => {
+    const sync = () => {
+      if (disabled) return;
+      if (assetCache && uid && assetCache.uid === uid) {
+        setAssetsRaw(assetCache.assets);
+      }
+    };
+    cacheListeners.add(sync);
+    return () => { cacheListeners.delete(sync); };
+  }, [disabled, uid]);
 
   const uploadAsset = useCallback(
     async (file: File): Promise<Asset | null> => {
