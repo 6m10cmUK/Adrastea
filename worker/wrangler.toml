@@ -1,0 +1,40 @@
+name = "adrastea-r2-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ALLOWED_ORIGINS = "http://localhost:6100,https://localhost:6100,https://adrastea.app"
+SUPABASE_URL = "https://yrbunpqdbhlgxagifpau.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlyYnVucHFkYmhsZ3hhZ2lmcGF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTY4NDIsImV4cCI6MjA5MDA3Mjg0Mn0.GbwbufUNIL7vTOWloB9V52bLyo9R8fLDfSKAp4arHp8"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "adrastea-assets"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "adrastea-db"
+database_id = "3816e6dc-5093-47da-8811-ea36ea6257c2"
+
+[env.staging]
+name = "adrastea-r2-proxy-staging"
+
+[env.staging.vars]
+ALLOWED_ORIGINS = "http://localhost:6100,https://localhost:6100,https://adrastea.app"
+SUPABASE_URL = "https://yrbunpqdbhlgxagifpau.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlyYnVucHFkYmhsZ3hhZ2lmcGF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTY4NDIsImV4cCI6MjA5MDA3Mjg0Mn0.GbwbufUNIL7vTOWloB9V52bLyo9R8fLDfSKAp4arHp8"
+
+[[env.staging.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "adrastea-assets-staging"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "adrastea-db-staging"
+database_id = "85dbbfe6-be34-4f1c-82a3-42d938053afa"
+
+[triggers]
+crons = ["0 0 * * 3", "0 0 * * 6"]
+
+[env.staging.triggers]
+crons = ["0 0 * * 3", "0 0 * * 6"]

@@ -1,0 +1,78 @@
+# Think / design notes
+__think__/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.env
+
+# PDF test files
+*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+build/
+dist/
+public/pdf.js/
+
+# IDE
+.vscode/
+.idea/
+
+# Wrangler
+.wrangler/
+
+# Supabase local
+.supabase/
+
+# Temporary files
+*.tmp
+*.temp.env
+
+.playwright-cli/
+
+# Playwright auth state
+e2e/.auth/.env.prod
+.env.prod
+e2e/.auth/
+
+.dev.vars*
+!.dev.vars.example
+!.env.example
+test-upload.png

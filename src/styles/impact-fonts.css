@@ -1,0 +1,34 @@
+/* Google Fontsから日本語の太いフォントを読み込み */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sawarabi+Gothic&display=swap');
+
+/* カスタムフォントスタック */
+.impact-japanese {
+  font-family: 
+    'Impact',
+    'Arial Black',
+    'Noto Sans JP',
+    'M PLUS 1p',
+    'Hiragino Kaku Gothic Black',
+    'ヒラギノ角ゴ W9',
+    'MS PGothic',
+    'メイリオ',
+    sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  
+  /* テキストストロークで太さを強調 */
+  -webkit-text-stroke: 2px currentColor;
+  text-stroke: 2px currentColor;
+  paint-order: stroke fill;
+}
+
+/* 代替案：text-shadowで太さを演出 */
+.impact-shadow {
+  text-shadow: 
+    1px 1px 0 currentColor,
+    -1px -1px 0 currentColor,
+    1px -1px 0 currentColor,
+    -1px 1px 0 currentColor;
+}

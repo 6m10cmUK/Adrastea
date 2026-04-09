@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+/* Jupiter Theme Configuration for Tailwind v4 */
+@theme {
+  --color-jupiter-50: #E6F2FF;
+  --color-jupiter-100: #CCE5FF;
+  --color-jupiter-200: #99CBFF;
+  --color-jupiter-300: #66B1FF;
+  --color-jupiter-400: #4DA3FF;
+  --color-jupiter-500: #0074E8;
+  --color-jupiter-600: #0058B3;
+  --color-jupiter-700: #004080;
+  --color-jupiter-800: #002966;
+  --color-jupiter-900: #001A4D;
+  
+  --radius-jupiter-sm: 8px;
+  --radius-jupiter-md: 12px;
+  --radius-jupiter-lg: 16px;
+  --radius-jupiter-xl: 24px;
+}
+
+/* Root App Settings */
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Custom Components */
+.btn-jupiter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1.5rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  transition: all 0.2s;
+  min-height: 40px;
+  min-width: 60px;
+}
+
+.btn-jupiter-primary {
+  background-color: var(--color-jupiter-500);
+  color: white;
+}
+
+.btn-jupiter-primary:hover {
+  background-color: var(--color-jupiter-600);
+  transform: scale(1.02);
+}
+
+.btn-jupiter-secondary {
+  background-color: rgb(243 244 246);
+  color: rgb(17 24 39);
+}
+
+.btn-jupiter-secondary:hover {
+  background-color: rgb(229 231 235);
+}
+
+.container-jupiter {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* Modal Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
+}
+
+/* Milkdown ダークテーマオーバーライド */
+.milkdown {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.milkdown .ProseMirror {
+  color: #e0e0e0 !important;
+  background: transparent !important;
+  outline: none !important;
+  padding: 4px 6px !important;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px !important;
+  font-family: inherit !important;
+  line-height: 1.5 !important;
+  flex: 1;
+  min-height: 0;
+}
+
+.milkdown .ProseMirror p {
+  margin: 0 !important;
+  color: #e0e0e0 !important;
+}
+
+.milkdown .ProseMirror strong {
+  color: #e0e0e0 !important;
+}
+
+.milkdown .ProseMirror em {
+  color: #e0e0e0 !important;
+}
+
+.milkdown .ProseMirror h1,
+.milkdown .ProseMirror h2,
+.milkdown .ProseMirror h3 {
+  color: #e0e0e0 !important;
+  margin: 0 !important;
+}
+
+.milkdown .ProseMirror .ProseMirror-selectednode {
+  outline: none !important;
+}
+
+/* Milkdownのツールチップ・メニューを非表示 */
+.milkdown-menu {
+  display: none !important;
+}
+
+/* AdColorPicker: enableAlpha=false 時のアルファスライダー非表示 */
+.adra-color-picker-popover[data-hide-alpha="true"] .react-colorful__alpha,
+.adra-color-picker-popover[data-hide-alpha="true"] .react-colorful__alpha-pointer {
+  display: none;
+}

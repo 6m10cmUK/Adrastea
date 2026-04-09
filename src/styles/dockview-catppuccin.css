@@ -1,0 +1,386 @@
+/* ==========================================================================
+   Adrastea Catppuccin Dark Theme
+   ========================================================================== */
+
+/* --- Adrastea テーマトークン --- */
+/* :root にも定義 — Portal で .adrastea-root 外に飛ぶ要素でも CSS 変数が解決できるように */
+/* --- テキスト選択制御 --- */
+.adrastea-root {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.adrastea-root input,
+.adrastea-root textarea,
+.adrastea-root [contenteditable="true"],
+.adrastea-root [contenteditable=""],
+.adrastea-root .ad-selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+:root,
+.adrastea-root {
+  /* 背景（5層 + elevated） */
+  --ad-bg-deep: #1e1e1e;
+  --ad-bg-input: #222222;
+  --ad-bg-base: #282828;
+  --ad-bg-surface: #313131;
+  --ad-bg-toolbar: #383838;
+  --ad-bg-elevated: #414141;
+  --ad-bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* テキスト */
+  --ad-text-primary: #e8e8e8;
+  --ad-text-secondary: #a0a0a0;
+  --ad-text-muted: #888888;
+  --ad-text-on-accent: #ffffff;
+
+  /* ボーダー */
+  --ad-border: #444444;
+  --ad-border-input: #505050;
+  --ad-border-subtle: rgba(255, 255, 255, 0.06);
+
+  /* アクセント */
+  --ad-accent: #4a90d9;
+  --ad-accent-hover: #5aa0e9;
+  --ad-accent-bg-subtle: rgba(137,180,250,0.15);
+  --ad-accent-border-subtle: rgba(137,180,250,0.3);
+  --ad-accent-highlight: rgba(137,180,250,0.2);
+  --ad-accent-gradient-from: rgba(137,180,250,0.08);
+  --ad-accent-gradient-to: rgba(137,180,250,0.02);
+
+  /* セマンティック */
+  --ad-danger: #e05555;
+  --ad-danger-hover: #f06565;
+  --ad-danger-bg-subtle: rgba(224, 85, 85, 0.1);
+  --ad-success: #4caf50;
+  --ad-warning: #e0a020;
+
+  /* カラー */
+  --ad-green: #a6e3a1;
+  --ad-green-bg-subtle: rgba(166,227,161,0.12);
+  --ad-green-border-subtle: rgba(166,227,161,0.25);
+
+  /* 背景（追加） */
+  --ad-bg-hover: rgba(255, 255, 255, 0.12);
+  --ad-bg-selected: rgba(255, 255, 255, 0.18);
+
+  /* シャドウ */
+  --ad-shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --ad-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --ad-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  /* ステータス */
+  --ad-status-red: #e05555;
+  --ad-status-blue: #4a90d9;
+  --ad-status-green: #4caf50;
+  --ad-status-yellow: #e0a020;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px;
+  color: var(--ad-text-primary);
+}
+
+/* --- ボタン（Phase 7: ゴースト / primary / danger） --- */
+.adra-btn {
+  transition: background-color 0.1s, color 0.1s, box-shadow 0.1s;
+}
+.adra-btn--ghost {
+  background: transparent;
+  border: none;
+}
+.adra-btn--ghost:not(:disabled):hover {
+  background: var(--ad-bg-hover);
+}
+/* リスト行など既に背景がある上に乗るボタン用：ホバーをはっきり見せる */
+.adra-btn--ghost.adra-btn--ghost-on-bg:not(:disabled):hover {
+  background: var(--ad-bg-selected);
+  box-shadow: 0 0 0 1px var(--ad-border);
+}
+.adra-btn--ghost:not(:disabled):active {
+  background: rgba(255, 255, 255, 0.18);
+}
+.adra-btn:not(.adra-btn--ghost):not(.adra-tab):not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+/* チャンネルタブ（ホバーで背景なし・テキスト色だけ変化） */
+.adra-tab {
+  background: transparent;
+  color: var(--ad-text-secondary);
+  transition: color 0.1s;
+}
+.adra-tab:hover {
+  background: transparent;
+  color: var(--ad-text-primary);
+}
+.adra-tab.adra-tab--active {
+  color: var(--ad-text-primary);
+  font-weight: 600;
+}
+.adra-tab:active {
+  background: transparent;
+}
+/* もともと背景色付きのボタン（追加系）：ホバーをはっきり見せる */
+.adra-btn.adra-btn--on-bg:not(:disabled):hover {
+  filter: brightness(1.2);
+  box-shadow: 0 0 0 1px var(--ad-border);
+}
+.adra-btn:not(:disabled):focus-visible {
+  box-shadow: 0 0 0 1px var(--ad-accent);
+  outline: none;
+}
+.adra-btn-icon {
+  transition: color 0.1s, background-color 0.1s;
+}
+.adra-btn-icon:not([data-avatar]):not(:disabled):hover {
+  color: var(--ad-accent) !important;
+  background: var(--ad-bg-hover);
+}
+.adra-btn-icon.adra-btn-icon--danger:not(:disabled):hover {
+  color: var(--ad-danger-hover) !important;
+}
+/* アバター表示時はホバーでアイコンを少し白っぽく＋明るいシャドウ */
+.adra-btn-icon[data-avatar="true"]:not(:disabled):hover {
+  filter: brightness(1.15);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+}
+/* ドロップダウン・リスト項目のホバー / 選択中 */
+.adra-list-item {
+  transition: background-color 0.1s;
+}
+.adra-list-item:hover {
+  background: var(--ad-bg-hover);
+}
+.adra-list-item.adra-list-item--selected {
+  background: var(--ad-bg-selected);
+}
+.adra-list-item.adra-list-item--selected:hover {
+  background: var(--ad-bg-hover);
+}
+
+.adra-card-create {
+  transition: border-color 0.15s, color 0.15s;
+}
+.adra-card-create:hover {
+  border-color: var(--ad-accent) !important;
+  color: var(--ad-accent) !important;
+}
+
+/* --- Tailwind リセット打ち消し --- */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+*,
+*::before,
+*::after {
+  border-color: transparent;
+}
+
+/* --- スクロールバーのコンパクト化（6px幅） --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(160, 160, 160, 0.3);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(160, 160, 160, 0.5);
+}
+
+/* --- Color Picker (react-colorful) --- */
+/* Tailwind v4 preflight が react-colorful の注入スタイルを壊すので、
+   必要なスタイルを高詳細度で再宣言する */
+.adra-color-picker-popover .react-colorful {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 180px;
+  height: 150px;
+  user-select: none;
+  cursor: default;
+}
+.adra-color-picker-popover .react-colorful__saturation {
+  position: relative;
+  flex-grow: 1;
+  border-color: transparent;
+  border-bottom: 12px solid #000;
+  border-radius: 0;
+  background-image: linear-gradient(0deg, #000, transparent),
+    linear-gradient(90deg, #fff, hsla(0, 0%, 100%, 0));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+.adra-color-picker-popover .react-colorful__hue,
+.adra-color-picker-popover .react-colorful__alpha {
+  position: relative;
+  height: 10px;
+  border-radius: 0;
+}
+.adra-color-picker-popover .react-colorful__hue {
+  background: linear-gradient(
+    90deg, red 0, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, red
+  );
+}
+.adra-color-picker-popover .react-colorful__alpha,
+.adra-color-picker-popover .react-colorful__alpha-pointer {
+  background-color: #fff;
+  background-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill-opacity=".05"><path d="M8 0h8v8H8zM0 8h8v8H0z"/></svg>');
+}
+.adra-color-picker-popover .react-colorful__alpha-gradient {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.adra-color-picker-popover .react-colorful__interactive {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: inherit;
+  outline: none;
+  touch-action: none;
+}
+.adra-color-picker-popover .react-colorful__pointer {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  background-color: #fff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.adra-color-picker-popover .react-colorful__saturation-pointer {
+  z-index: 3;
+}
+.adra-color-picker-popover .react-colorful__hue-pointer {
+  z-index: 2;
+}
+
+/* ==========================================================================
+   dockview テーマオーバーライド
+   ========================================================================== */
+
+.dockview-theme-catppuccin {
+  /* 背景 */
+  --dv-background-color: var(--ad-bg-base);
+  --dv-group-view-background-color: var(--ad-bg-base);
+
+  /* タブバー */
+  --dv-tabs-and-actions-container-background-color: var(--ad-bg-toolbar);
+  --dv-tabs-and-actions-container-font-size: 11px;
+  --dv-tabs-container-scrollbar-color: var(--ad-border);
+
+  /* アクティブタブ */
+  --dv-activegroup-visiblepanel-tab-background-color: var(--ad-bg-surface);
+  --dv-activegroup-visiblepanel-tab-color: var(--ad-text-primary);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-color: var(--ad-text-secondary);
+
+  /* 非アクティブグループ */
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--ad-bg-surface);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--ad-text-secondary);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--ad-text-muted);
+
+  /* セパレーター */
+  --dv-separator-border: var(--ad-border);
+
+  /* スプリッター */
+  --dv-sash-color: var(--ad-border);
+  --dv-active-sash-color: var(--ad-accent);
+
+  /* ドラッグ */
+  --dv-drag-over-background-color: rgba(137, 180, 250, 0.15);
+  --dv-drag-over-border-color: var(--ad-accent);
+
+  /* フローティング */
+  --dv-floating-box-shadow: var(--ad-shadow-lg);
+  --dv-tab-divider-color: transparent; /* resize-container border用 → 下で border: none に上書き */
+}
+
+/* 角丸を消す */
+.dockview-theme-catppuccin .dv-tab {
+  border-radius: 0;
+}
+
+.dockview-theme-catppuccin .dv-tabs-container {
+  height: 28px;
+  min-height: 28px;
+}
+
+.dockview-theme-catppuccin .dv-default-tab {
+  font-size: 11px;
+  padding: 0 8px;
+}
+
+
+/* フローティング枠: 変数だけだと border-width:1px が残るので直接消す */
+.dockview-theme-catppuccin .dv-resize-container {
+  border: none;
+}
+
+/* フローティング時の半透明背景 */
+/* backdrop-filter は Konva canvas に効かないため、透明度だけで表現 */
+.dockview-theme-catppuccin .dv-resize-container.dv-floating-translucent {
+  background: rgba(40, 40, 40, 0.85);
+  z-index: 20;
+}
+/* フローティング内のグループビューを透明にして外側の半透明背景を活かす */
+.dockview-theme-catppuccin .dv-groupview-floating {
+  background: transparent !important;
+}
+/* フローティング時はパネルコンテンツの背景も透明に */
+.dv-resize-container.dv-floating-translucent .dv-content-container > *,
+.dv-resize-container.dv-floating-translucent .dv-react-part > * {
+  background: transparent !important;
+}
+
+/* パネルコンテンツ領域 */
+.dockview-theme-catppuccin .dv-content-container {
+  overflow: hidden;
+}
+.dockview-theme-catppuccin .dv-react-part {
+  position: relative;
+}
+
+/* ColumnHeaderBar */
+.adra-column-header-bar {
+  background: var(--ad-bg-deep);
+  border-bottom: 1px solid var(--ad-border);
+  flex-shrink: 0;
+}
+
+.adra-column-header-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 0 0;
+  height: 100%;
+  border-right: 1px solid var(--ad-border);
+  overflow: hidden;
+}
