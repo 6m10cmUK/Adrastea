@@ -19,10 +19,9 @@ max_rows = 1000
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
-enabled = false
-# Paths to self-signed certificate pair.
-# cert_path = "../certs/my-cert.pem"
-# key_path = "../certs/my-key.pem"
+enabled = true
+cert_path = "../certs/supabase-cert.pem"
+key_path = "../certs/supabase-key.pem"
 
 [db]
 # Port to use for the local database URL.
@@ -147,9 +146,9 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "https://macbook-pro.tailc35afd.ts.net:6100"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["https://127.0.0.1:3000", "https://localhost:6100", "https://100.121.7.83:6100", "https://macbook-pro.tailc35afd.ts.net:6100"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
@@ -298,6 +297,14 @@ max_frequency = "5s"
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+redirect_uri = "https://macbook-pro.tailc35afd.ts.net:54321/auth/v1/callback"
+url = ""
+skip_nonce_check = true
+
 [auth.external.apple]
 enabled = false
 client_id = ""

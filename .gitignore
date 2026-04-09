@@ -60,6 +60,10 @@ public/pdf.js/
 
 # Supabase local
 .supabase/
+supabase/.env
+
+# Local TLS certs
+certs/
 
 # Temporary files
 *.tmp

@@ -1,0 +1,44 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Determine build mode
+        id: build_mode
+        run: |
+          if [[ "${{ github.ref_name }}" == *"demo"* ]]; then
+            echo "mode=demo" >> $GITHUB_OUTPUT
+          else
+            echo "mode=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build project
+        run: npm run build
+        env:
+          VITE_PUBLIC_MODE: ${{ steps.build_mode.outputs.mode }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
+
+      - name: Deploy to Cloudflare Pages
+        run: npx wrangler pages deploy dist --project-name=adrastea --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
