@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MockAdrasteaProvider } from '../contexts/MockAdrasteaProvider';
 import { DockLayout } from '../components/DockLayout';
 import { TopToolbar } from '../components/TopToolbar';
 import { SettingsModal } from '../components/SettingsModal';
 import { CutinOverlay } from '../components/CutinOverlay';
 import { ToastContainer } from '../components/ui/Toast';
+import { AdModal, AdButton } from '../components/ui';
 import { useAdrasteaContext } from '../contexts/AdrasteaContext';
 import { usePermission } from '../hooks/usePermission';
 import { usePasteHandler } from '../hooks/usePasteHandler';
@@ -109,7 +110,36 @@ function AdrasteaDemoRoom() {
   );
 }
 
+function DemoWelcomeModal({ onClose }: { onClose: () => void }) {
+  return (
+    <AdModal title="Adrastea DEMO へようこそ" width="440px" onClose={onClose} footer={
+      <AdButton onClick={onClose} style={{ width: '100%' }}>はじめる</AdButton>
+    }>
+      <div style={{ fontSize: 13, lineHeight: 1.8, color: theme.textSecondary }}>
+        <p>このページはデモ版です。データは保存されません。</p>
+        <p>リロードすると操作内容や登録内容はすべて初期化されます。</p>
+        <p>チャットや盤面のリアルタイム共有には対応していないため、セッション用途にはご利用いただけません。</p>
+        <p style={{ marginTop: 12 }}>正式リリース版は鋭意制作中です。</p>
+        <p>お問い合わせはこちらまで。</p>
+        <p>
+          X(旧Twitter)：
+          <a
+            href="https://x.com/trpg_Adrastea"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: theme.accent, textDecoration: 'none' }}
+          >
+            @trpg_Adrastea
+          </a>
+        </p>
+      </div>
+    </AdModal>
+  );
+}
+
 export default function AdrasteaDemo() {
+  const [showWelcome, setShowWelcome] = useState(true);
+
   useEffect(() => {
     document.title = 'Adrastea Demo';
   }, []);
@@ -117,6 +147,7 @@ export default function AdrasteaDemo() {
   return (
     <MockAdrasteaProvider>
       <AdrasteaDemoRoom />
+      {showWelcome && <DemoWelcomeModal onClose={() => setShowWelcome(false)} />}
     </MockAdrasteaProvider>
   );
 }
