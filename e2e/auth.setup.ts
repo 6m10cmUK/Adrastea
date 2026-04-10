@@ -11,8 +11,13 @@ export const AUTH_FILE = path.join(__dirname, '.auth/state.json');
 
 const CACHE_TTL_MS = 50 * 60 * 1000;
 
-const SUPABASE_URL = 'https://yrbunpqdbhlgxagifpau.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_J1PYr4e0chbEHislvQVTKw_F7Wx5-WH';
+// .env.local から Supabase URL/KEY を読む
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
+
+if (!SUPABASE_ANON_KEY) {
+  throw new Error('VITE_SUPABASE_ANON_KEY が .env.local に未設定');
+}
 
 setup('authenticate', async () => {
   if (fs.existsSync(AUTH_FILE)) {
@@ -24,17 +29,26 @@ setup('authenticate', async () => {
     console.log('⏰ 認証状態が期限切れ — 再認証します');
   }
 
-  const email = process.env.PLAYWRIGHT_TEST_EMAIL;
-  const password = process.env.PLAYWRIGHT_TEST_PASSWORD;
+  const email = process.env.PLAYWRIGHT_TEST_EMAIL || 'test@adrastea.local';
+  const password = process.env.PLAYWRIGHT_TEST_PASSWORD || 'test_password_12345';
   if (!email || !password) {
     throw new Error('PLAYWRIGHT_TEST_EMAIL / PLAYWRIGHT_TEST_PASSWORD が .env.local に未設定');
   }
 
-  // Node.js 側で Supabase にログイン
+  // Node.js 側で Supabase にログイン（ユーザーが存在しなければ signUp で作成）
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error || !data.session) {
-    throw new Error(`Supabase 認証失敗: ${error?.message ?? 'セッションなし'}`);
+  let { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    // ユーザーが存在しない場合は signUp で作成
+    const signUp = await supabase.auth.signUp({ email, password, options: { data: { full_name: 'Test User' } } });
+    if (signUp.error || !signUp.data.session) {
+      throw new Error(`Supabase 認証失敗 (signIn: ${error.message}, signUp: ${signUp.error?.message ?? 'セッションなし'})`);
+    }
+    data = signUp.data;
+    error = null;
+  }
+  if (!data.session) {
+    throw new Error('Supabase 認証失敗: セッションなし');
   }
 
   const sessionJson = JSON.stringify({
@@ -46,11 +60,12 @@ setup('authenticate', async () => {
     user: data.session.user,
   });
 
-  // Supabase が localStorage に保存するキー名
-  const storageKey = `sb-yrbunpqdbhlgxagifpau-auth-token`;
+  // Supabase JS のデフォルト storageKey: sb-{hostname.split('.')[0]}-auth-token
+  const url = new URL(SUPABASE_URL);
+  const storageKey = `sb-${url.hostname.split('.')[0]}-auth-token`;
 
   // storageState JSON を直接構築
-  const origin = 'https://localhost:6100';
+  const origin = process.env.PLAYWRIGHT_BASE_URL || 'https://localhost:6100';
   const storageState = {
     cookies: [],
     origins: [{

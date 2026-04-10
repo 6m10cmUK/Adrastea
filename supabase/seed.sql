@@ -1,0 +1,3 @@
+-- Seed data for local Supabase development
+-- テストユーザーは auth.setup.ts で GoTrue API 経由で作成される
+-- (auth.users への直接 INSERT は GoTrue の内部スキーマと不整合を起こすため使わない)

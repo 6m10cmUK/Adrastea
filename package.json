@@ -12,6 +12,7 @@
     "dev:local": "bash scripts/dev-local.sh",
     "init:local": "bash scripts/init-local.sh",
     "clean:dev": "rm -rf node_modules/.vite && npm run dev",
+    "db:reset": "npx supabase db reset && rm -rf worker/.wrangler/state/v3/r2 worker/.wrangler/state/v3/d1",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npx playwright test",

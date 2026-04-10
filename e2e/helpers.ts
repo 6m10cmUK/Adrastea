@@ -9,15 +9,15 @@ dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 
 export const BASE_URL = 'https://localhost:6100';
 
-const SUPABASE_URL = 'https://yrbunpqdbhlgxagifpau.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_J1PYr4e0chbEHislvQVTKw_F7Wx5-WH';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
 
 /** 認証済み Supabase クライアントを取得 */
 export async function getSupabase() {
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   await supabase.auth.signInWithPassword({
-    email: process.env.PLAYWRIGHT_TEST_EMAIL!,
-    password: process.env.PLAYWRIGHT_TEST_PASSWORD!,
+    email: process.env.PLAYWRIGHT_TEST_EMAIL || 'test@adrastea.local',
+    password: process.env.PLAYWRIGHT_TEST_PASSWORD || 'test_password_12345',
   });
   return supabase;
 }
