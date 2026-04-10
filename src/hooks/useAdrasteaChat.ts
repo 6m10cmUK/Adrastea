@@ -240,8 +240,10 @@ export function useAdrasteaChat(roomId: string, options?: { inject?: ChatInject;
         if (messageType === 'chat') {
           const result = await rollDice(content, diceSystem || 'DiceBot');
           if (result) {
-            const color = result.success ? '#4a90d9' : '#e05555';
-            finalContent = `${content} <color=${color}>${result.text}</color>`;
+            const color = result.success === null ? null : result.success ? '#4a90d9' : '#e05555';
+            finalContent = color
+              ? `${content} <color=${color}>${result.text}</color>`
+              : `${content} ${result.text}`;
             finalType = result.isSecret ? 'secret_dice' : 'dice';
           }
         }

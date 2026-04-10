@@ -217,7 +217,7 @@ export interface BgmTrack {
 
 export interface DiceResult {
   text: string;
-  success: boolean;
+  success: boolean | null;
   result: string;
   isSecret: boolean;
 }

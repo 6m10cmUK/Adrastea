@@ -14,11 +14,11 @@ export async function rollDice(
       `https://bcdice.onlinesession.app/v2/game_system/${encodeURIComponent(gameSystem)}/roll?command=${encodeURIComponent(input)}`
     );
     if (!res.ok) return null;
-    const data = await res.json() as { ok: boolean; text?: string; secret?: boolean; failure?: boolean; reason?: string };
+    const data = await res.json() as { ok: boolean; text?: string; secret?: boolean; success?: boolean; failure?: boolean; reason?: string };
     if (!data.ok) return null;
     return {
       text: data.text || '',
-      success: !data.failure,
+      success: data.success ? true : data.failure ? false : null,
       result: input,
       isSecret: data.secret ?? false,
     };
