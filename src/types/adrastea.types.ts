@@ -104,6 +104,7 @@ export interface Character {
   sort_order: number;
   board_x?: number;
   board_y?: number;
+  board_rotation?: number;
   board_visible?: boolean;
   created_at: number;
   updated_at: number;
@@ -154,6 +155,9 @@ export interface BoardObject {
   text_color: string;
   scale_x: number;
   scale_y: number;
+
+  // 回転（度数、0-360）
+  rotation: number;
 
   // メモ
   memo?: string;
@@ -229,6 +233,8 @@ export interface ChatMessage {
   channel?: string;
   allowed_user_ids?: string[];
   created_at: number;
+  edited_at?: number | null;
+  edited_by_uid?: string | null;
 }
 
 export interface UserProfile {

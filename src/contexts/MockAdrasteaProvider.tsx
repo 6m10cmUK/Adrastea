@@ -324,7 +324,7 @@ export const MockAdrasteaProvider: React.FC<MockAdrasteaProviderProps> = ({
     addCutin, updateCutin, removeCutin, reorderCutins, triggerCutin, clearCutin,
 
     // Mutations: Message
-    sendMessage, loadMore, clearMessages, handleSendMessage, openSecretDice: async () => {},
+    sendMessage, loadMore, clearMessages, handleSendMessage, openSecretDice: async () => {}, editMessage: async () => {}, deleteMessage: async () => {},
 
     // Mutations: ScenarioText
     addScenarioText: mock.addScenarioText,

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DndContext,
   closestCenter,
@@ -25,6 +26,8 @@ import { AdButton, AdCheckbox, AdInput, AdModal, ConfirmModal, DropdownMenu, Too
 import { genId } from '../utils/id';
 import { finalizeChannelAllowedUserIds, isPrivateChatChannel } from '../utils/chatChannelVisibility';
 import { API_BASE_URL } from '../config/api';
+import ChatEditor from './ChatEditor';
+import type { ChatEditorHandle } from './ChatEditor';
 
 // スピナーアニメーション用のスタイル注入
 if (typeof document !== 'undefined' && !document.getElementById('chat-spinner-style')) {
@@ -199,6 +202,8 @@ interface ChatLogPanelProps {
   onLoadMore: () => void | Promise<void>;
   onClearMessages?: () => void;
   onOpenSecretDice?: (messageId: string) => Promise<void>;
+  onEditMessage?: (messageId: string, newSenderName: string, newContent: string) => Promise<void>;
+  onDeleteMessage?: (messageId: string) => Promise<void>;
 }
 
 const formatTime = (timestamp: number): string => {
@@ -419,6 +424,8 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
   onLoadMore,
   onClearMessages,
   onOpenSecretDice,
+  onEditMessage,
+  onDeleteMessage,
 }) => {
   const {
     activeChatChannel,
@@ -443,6 +450,22 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
   const [editSelectedUserIds, setEditSelectedUserIds] = useState<string[]>([]);
   const [savingEditChannel, setSavingEditChannel] = useState(false);
   const [pendingDeleteChannel, setPendingDeleteChannel] = useState<ChatChannel | null>(null);
+
+  // メッセージ編集・削除用の state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: ChatMessage } | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const [editSenderName, setEditSenderName] = useState('');
+  const editEditorRef = useRef<ChatEditorHandle>(null);
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState<ChatMessage | null>(null);
+
+  // 編集モーダルが開いたら ChatEditor に初期テキストをセット
+  useEffect(() => {
+    if (!editingMessage) return;
+    requestAnimationFrame(() => {
+      editEditorRef.current?.setText(editingMessage.content);
+      editEditorRef.current?.focus();
+    });
+  }, [editingMessage]);
 
   const userRoleMembers = useMemo(
     () => members.filter((m) => m.role === 'user'),
@@ -690,6 +713,17 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
     setCreatingChannel(false);
   }, []);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent, msg: ChatMessage) => {
+    // system メッセージは対象外
+    if (msg.message_type === 'system') return;
+    const isOwner = roomRole === 'owner' || roomRole === 'sub_owner';
+    const isSender = user?.uid === msg.sender_uid;
+    // 権限なしなら何もしない
+    if (!isOwner && !isSender) return;
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, message: msg });
+  }, [roomRole, user?.uid]);
+
   const handleCreateChannel = useCallback(async () => {
     const trimmed = newChannelName.trim();
     if (!trimmed) {
@@ -841,6 +875,7 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
       return (
         <div
           key={msg.id}
+          onContextMenu={(e) => handleContextMenu(e, msg)}
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -858,6 +893,11 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
               <span style={{ color: theme.textMuted, fontSize: '10px', flexShrink: 0 }}>
                 {formatTime(msg.created_at)}
               </span>
+              {msg.edited_at && (
+                <span style={{ color: theme.textMuted, fontSize: '10px', flexShrink: 0 }}>
+                  (編集済み)
+                </span>
+              )}
             </div>
             <div style={{ marginTop: '1px', position: 'relative' }}>
               <div style={{ color: theme.textPrimary, fontSize: '12px' }}>
@@ -900,6 +940,7 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
     return (
       <div
         key={msg.id}
+        onContextMenu={(e) => handleContextMenu(e, msg)}
         style={{
           display: 'flex',
           alignItems: 'flex-start',
@@ -917,6 +958,11 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
             <span style={{ color: theme.textMuted, fontSize: '10px', flexShrink: 0 }}>
               {formatTime(msg.created_at)}
             </span>
+            {msg.edited_at && (
+              <span style={{ color: theme.textMuted, fontSize: '10px', flexShrink: 0 }}>
+                (編集済み)
+              </span>
+            )}
           </div>
           <div style={{ color: theme.textPrimary, fontSize: '12px', marginTop: '1px' }}>
             {parseContent(msg.content)}
@@ -924,7 +970,7 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
         </div>
       </div>
     );
-  }, [characters, user, onOpenSecretDice]);
+  }, [characters, user, onOpenSecretDice, handleContextMenu]);
 
   return (
     <div
@@ -1399,6 +1445,141 @@ const ChatLogPanel: React.FC<ChatLogPanelProps> = ({
         {filteredMessages.map(renderMessage)}
         <div ref={messagesEndRef} />
       </div>
+
+      {contextMenu && createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 10005 }}
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+        >
+          <div
+            style={{
+              position: 'fixed',
+              left: contextMenu.x,
+              top: contextMenu.y,
+              background: theme.bgElevated,
+              border: `1px solid ${theme.border}`,
+              boxShadow: theme.shadowLg,
+              minWidth: '120px',
+              zIndex: 10006,
+              padding: '4px 0',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 公開: secret_dice かつ送信者本人 */}
+            {contextMenu.message.message_type === 'secret_dice' && user?.uid === contextMenu.message.sender_uid && onOpenSecretDice && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenSecretDice(contextMenu.message.id);
+                  setContextMenu(null);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  width: '100%', padding: '6px 12px', background: 'none',
+                  border: 'none', color: theme.textPrimary, fontSize: '12px',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = theme.bgInput; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                <MessageSquareShare size={13} /> 公開
+              </button>
+            )}
+            {/* 編集: chatのみ、オーナー or 送信者 */}
+            {contextMenu.message.message_type === 'chat' && (roomRole === 'owner' || roomRole === 'sub_owner' || user?.uid === contextMenu.message.sender_uid) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMessage(contextMenu.message);
+                  setEditSenderName(contextMenu.message.sender_name);
+                  setContextMenu(null);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  width: '100%', padding: '6px 12px', background: 'none',
+                  border: 'none', color: theme.textPrimary, fontSize: '12px',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = theme.bgInput; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                <Pencil size={13} /> 編集
+              </button>
+            )}
+            {/* 削除: オーナーのみ */}
+            {(roomRole === 'owner' || roomRole === 'sub_owner') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmMessage(contextMenu.message);
+                  setContextMenu(null);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  width: '100%', padding: '6px 12px', background: 'none',
+                  border: 'none', color: theme.danger ?? '#e05555', fontSize: '12px',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = theme.bgInput; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                <Trash2 size={13} /> 削除
+              </button>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {editingMessage && (
+        <AdModal title="メッセージ編集" width="480px" onClose={() => setEditingMessage(null)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px 0' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: theme.textSecondary, display: 'block', marginBottom: '4px' }}>発言者名</label>
+              <AdInput
+                value={editSenderName}
+                onChange={(e) => setEditSenderName(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: theme.textSecondary, display: 'block', marginBottom: '4px' }}>内容</label>
+              <div style={{ height: '180px' }}>
+                <ChatEditor
+                  ref={editEditorRef}
+                  characters={characters}
+                  enterToSend={false}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <AdButton variant="default" onClick={() => setEditingMessage(null)}>キャンセル</AdButton>
+              <AdButton
+                onClick={async () => {
+                  const content = editEditorRef.current?.getText()?.trim() ?? '';
+                  if (!editSenderName.trim() || !content) return;
+                  await onEditMessage?.(editingMessage.id, editSenderName.trim(), content);
+                  setEditingMessage(null);
+                }}
+              >保存</AdButton>
+            </div>
+          </div>
+        </AdModal>
+      )}
+
+      {deleteConfirmMessage && (
+        <ConfirmModal
+          message={`「${deleteConfirmMessage.content.slice(0, 50)}${deleteConfirmMessage.content.length > 50 ? '...' : ''}」を削除しますか？`}
+          confirmLabel="削除"
+          danger
+          onConfirm={async () => {
+            await onDeleteMessage?.(deleteConfirmMessage.id);
+            setDeleteConfirmMessage(null);
+          }}
+          onCancel={() => setDeleteConfirmMessage(null)}
+        />
+      )}
 
       {showClearConfirm && onClearMessages && (
         <ConfirmModal

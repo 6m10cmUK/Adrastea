@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdrasteaContext } from '../../contexts/AdrasteaContext';
 import { theme } from '../../styles/theme';
@@ -11,6 +11,32 @@ export function ChatPaletteDockPanel() {
   const { user } = useAuth();
   const ctx = useAdrasteaContext();
   const [showEditor, setShowEditor] = useState(false);
+  const [truncatedSet, setTruncatedSet] = useState<Set<number>>(new Set());
+  const textRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+
+  const measureTruncation = useCallback((idx: number, el: HTMLButtonElement | null) => {
+    if (el) {
+      textRefs.current.set(idx, el);
+      const isTruncated = el.scrollWidth > el.clientWidth;
+      setTruncatedSet((prev) => {
+        const has = prev.has(idx);
+        if (isTruncated && !has) {
+          const next = new Set(prev);
+          next.add(idx);
+          return next;
+        }
+        if (!isTruncated && has) {
+          const next = new Set(prev);
+          next.delete(idx);
+          return next;
+        }
+        return prev;
+      });
+    } else {
+      textRefs.current.delete(idx);
+    }
+  }, []);
+
   const editorRef = useRef<CharacterEditorHandle>(null);
 
   // アクティブなキャラを取得
@@ -85,61 +111,72 @@ export function ChatPaletteDockPanel() {
             flex: 1,
             overflowY: 'auto',
             padding: '4px 8px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '2px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+            gridAutoRows: 'min-content',
+            gap: '4px',
             minWidth: 0,
+            alignContent: 'start',
           }}
         >
-          {paletteItems.map((item, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <button
-                className="adra-btn adra-btn--ghost"
-                onClick={() => ctx.setChatInjectText(item)}
+          {paletteItems.map((item, idx) => {
+            const tile = (
+              <div
+                key={idx}
                 style={{
-                  padding: '6px 4px',
-                  borderRadius: 0,
-                  color: theme.textPrimary,
-                  fontSize: '12px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: theme.bgElevated,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: '3px',
                   minWidth: 0,
-                  display: 'block',
+                  overflow: 'hidden',
                 }}
-                title={item}
               >
-                {item}
-              </button>
-              <Tooltip label="送信">
                 <button
+                  ref={(el) => measureTruncation(idx, el)}
                   className="adra-btn adra-btn--ghost"
-                  onClick={() => handleSendPaletteMessage(item)}
+                  onClick={() => ctx.setChatInjectText(item)}
                   style={{
-                    padding: '4px 6px',
+                    flex: 1,
+                    minWidth: 0,
+                    padding: '4px 8px',
                     borderRadius: 0,
-                    color: theme.accent,
+                    fontSize: '12px',
+                    color: theme.textPrimary,
                     cursor: 'pointer',
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    textAlign: 'left',
+                    display: 'block',
                   }}
                 >
-                  <Send size={14} />
+                  {item}
                 </button>
-              </Tooltip>
-            </div>
-          ))}
+                <Tooltip label="送信">
+                  <button
+                    className="adra-btn adra-btn--ghost"
+                    onClick={() => handleSendPaletteMessage(item)}
+                    style={{
+                      padding: '4px 6px',
+                      borderRadius: 0,
+                      color: theme.accent,
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Send size={12} />
+                  </button>
+                </Tooltip>
+              </div>
+            );
+            return truncatedSet.has(idx) ? (
+              <Tooltip key={idx} label={item}>{tile}</Tooltip>
+            ) : tile;
+          })}
         </div>
       )}
 

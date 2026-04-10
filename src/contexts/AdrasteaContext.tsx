@@ -83,6 +83,8 @@ export interface AdrasteaContextValue {
   loadMore: any;
   clearMessages: any;
   openSecretDice: any;
+  editMessage: (messageId: string, newSenderName: string, newContent: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   handleSendMessage: (
     content: string,
     messageType: any,
@@ -443,6 +445,8 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
       loadMore: async () => {},
       clearMessages: async () => {},
       openSecretDice: async () => {},
+      editMessage: async () => {},
+      deleteMessage: async () => {},
       handleSendMessage: () => {},
       activeSpeakerCharId: null,
       setActiveSpeakerCharId: () => {},
@@ -782,6 +786,8 @@ export function useAdrasteaContext(): AdrasteaContextValue {
       loadMore: roomDataCtx.loadMore,
       clearMessages: roomDataCtx.clearMessages,
       openSecretDice: roomDataCtx.openSecretDice,
+      editMessage: roomDataCtx.editMessage,
+      deleteMessage: roomDataCtx.deleteMessage,
       handleSendMessage: roomDataCtx.handleSendMessage,
       activeSpeakerCharId: roomDataCtx.activeSpeakerCharId,
       setActiveSpeakerCharId: roomDataCtx.setActiveSpeakerCharId,

@@ -81,7 +81,7 @@ export function useAdrasteaChat(roomId: string, options?: { inject?: ChatInject;
 
   const messagesQuery = useSupabaseQuery<ChatMessage>({
     table: 'messages',
-    columns: 'id,room_id,sender_name,sender_uid,sender_avatar_asset_id,content,message_type,channel,allowed_user_ids,created_at',
+    columns: 'id,room_id,sender_name,sender_uid,sender_avatar_asset_id,content,message_type,channel,allowed_user_ids,created_at,edited_at,edited_by_uid',
     roomId,
     filter,
     enabled: !inject && enabled !== false,
@@ -184,6 +184,8 @@ export function useAdrasteaChat(roomId: string, options?: { inject?: ChatInject;
       channel: m.channel ?? 'main',
       allowed_user_ids: m.allowed_user_ids,
       created_at: m.created_at,
+      edited_at: m.edited_at ?? undefined,
+      edited_by_uid: m.edited_by_uid ?? undefined,
     }));
     // キャッシュに追加
     for (const msg of msgs) {
@@ -329,6 +331,63 @@ export function useAdrasteaChat(roomId: string, options?: { inject?: ChatInject;
     }
   }, [inject, loadingMore, hasMore, messages, roomId, user, token]);
 
+  const editMessage = useCallback(
+    async (messageId: string, newSenderName: string, newContent: string) => {
+      if (injectRef.current) return;
+      const uid = user?.uid;
+      try {
+        // 楽観的更新（localCacheRef も同期）
+        const cached = localCacheRef.current.get(messageId);
+        if (cached) {
+          localCacheRef.current.set(messageId, { ...cached, sender_name: newSenderName, content: newContent, edited_at: Date.now(), edited_by_uid: uid });
+        }
+        setMessagesData((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, sender_name: newSenderName, content: newContent, edited_at: Date.now(), edited_by_uid: uid }
+              : m
+          )
+        );
+        const { error } = await supabase
+          .from('messages')
+          .update({
+            sender_name: newSenderName,
+            content: newContent,
+            edited_at: Date.now(),
+            edited_by_uid: uid,
+          })
+          .eq('id', messageId);
+        if (error) {
+          location.reload();
+          throw error;
+        }
+      } catch (err) {
+        console.error('メッセージ編集失敗:', err);
+        throw err;
+      }
+    },
+    [setMessagesData, user?.uid]
+  );
+
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (injectRef.current) return;
+      try {
+        localCacheRef.current.delete(messageId);
+        setMessagesData((prev) => prev.filter((m) => m.id !== messageId));
+        const { error } = await supabase.from('messages').delete().eq('id', messageId);
+        if (error) {
+          location.reload();
+          throw error;
+        }
+      } catch (err) {
+        console.error('メッセージ削除失敗:', err);
+        throw err;
+      }
+    },
+    [setMessagesData]
+  );
+
   const clearMessages = useCallback(async () => {
     if (injectRef.current) return;
     try {
@@ -397,5 +456,7 @@ export function useAdrasteaChat(roomId: string, options?: { inject?: ChatInject;
     loadMore,
     clearMessages,
     openSecretDice,
+    editMessage,
+    deleteMessage,
   };
 }
