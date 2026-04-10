@@ -22,7 +22,7 @@ export let __blockBoardWheelCount = 0;
 /** 盤面ステータス枠の「まだスクロールできる」ヒント用フェード帯の高さ */
 const BOARD_STATUS_SCROLL_FADE_PX = 36;
 
-const MIN_SIZE_PX = 50;
+const MIN_SIZE_PX = 0.5; // 0.01グリッド単位 = 0.5px
 const EDGE_RATIO = 0.15;        // 要素サイズの 15% をエッジ判定に使う
 const EDGE_MIN_PX = 6;          // スクリーン上の最小エッジ幅
 const EDGE_MAX_PX = 28;         // スクリーン上の最大エッジ幅
@@ -38,6 +38,7 @@ interface DomObjectOverlayProps {
   onSelectObject: (id: string) => void;
   onEditObject: (id: string) => void;
   onResizeObject?: (id: string, width: number, height: number) => void;
+  onRotateObject?: (id: string, rotation: number) => void;
   onSyncObjectSize?: (id: string, width: number, height: number) => void;
   characters?: Character[];
   onUpdateCharacterBoardPosition?: (charId: string, x: number, y: number) => void;
@@ -70,14 +71,27 @@ function getEdge(localX: number, localY: number, w: number, h: number): Edge | n
   return { top, bottom, left, right };
 }
 
-function edgeToCursor(edge: Edge | null): string {
+// リサイズカーソルを8方向で定義。インデックスは45度刻みの方向（0=N, 1=NE, 2=E, ...）
+const RESIZE_CURSORS = ['ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize'];
+
+function edgeToCursor(edge: Edge | null, rotationDeg = 0): string {
   if (!edge) return 'move';
   const { top, bottom, left, right } = edge;
-  if ((top && left) || (bottom && right)) return 'nwse-resize';
-  if ((top && right) || (bottom && left)) return 'nesw-resize';
-  if (top || bottom) return 'ns-resize';
-  if (left || right) return 'ew-resize';
-  return 'move';
+  // エッジの基本方向をインデックスに変換（0=N, 1=NE, 2=E, ...）
+  let baseIdx: number;
+  if (top && left) baseIdx = 7;       // NW → nwse
+  else if (top && right) baseIdx = 1; // NE → nesw
+  else if (bottom && left) baseIdx = 5; // SW → nesw
+  else if (bottom && right) baseIdx = 3; // SE → nwse
+  else if (top) baseIdx = 0;          // N → ns
+  else if (right) baseIdx = 2;        // E → ew
+  else if (bottom) baseIdx = 4;       // S → ns
+  else if (left) baseIdx = 6;         // W → ew
+  else return 'move';
+  // 回転を45度刻みのステップに変換して加算
+  const rotSteps = Math.round(rotationDeg / 45) % 8;
+  const idx = ((baseIdx + rotSteps) % 8 + 8) % 8;
+  return RESIZE_CURSORS[idx];
 }
 
 // --- リサイズ状態 ---
@@ -89,6 +103,24 @@ interface ResizeState {
   origPxY: number;
   origPxW: number;
   origPxH: number;
+}
+
+// --- 回転状態 ---
+interface RotateState {
+  centerX: number;  // オブジェクト中心のスクリーン座標
+  centerY: number;
+  startAngle: number; // ドラッグ開始時の角度
+  origRotation: number; // ドラッグ開始時の rotation 値
+}
+
+// 回転カーソル（SVG data URL）
+const ROTATE_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9'/%3E%3Cpath d='M12 3l4 0 0 4'/%3E%3C/svg%3E") 12 12, pointer`;
+
+/** 角度を45度刻みにスナップ（Shift で自由回転） */
+function snapRotation(deg: number, free: boolean): number {
+  if (free) return ((Math.round(deg) % 360) + 360) % 360;
+  const snapped = Math.round(deg / 45) * 45;
+  return ((snapped % 360) + 360) % 360;
 }
 
 // --- ドラッグ状態 ---
@@ -246,6 +278,7 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
   onSelect,
   onEdit,
   onResize,
+  onRotate,
   children,
   style: extraStyle,
 }: {
@@ -258,6 +291,7 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onResize?: (id: string, width: number, height: number, oldWidth?: number, oldHeight?: number) => void;
+  onRotate?: (id: string, rotation: number) => void;
   children: React.ReactNode;
   style?: React.CSSProperties;
 }) {
@@ -269,6 +303,11 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
   const elRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
+  const rotateRef = useRef<RotateState | null>(null);
+  const [localRotation, setLocalRotation] = useState<number | null>(null);
+  const localRotationRef = useRef<number | null>(null);
+
+  const rotDeg = localRotation ?? obj.rotation ?? 0;
   const [hovered, setHovered] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -337,6 +376,7 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
   // ドラッグもリサイズもできないオブジェクトかどうか
   const canDrag = isDraggable && !obj.position_locked;
   const canResize = isResizable && !!onResize && !obj.size_locked;
+  const canRotate = isResizable && !!onRotate && !obj.size_locked;
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const el = elRef.current;
@@ -345,12 +385,20 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
     const stage = stageRef.current;
     const scale = stage?.scaleX?.() ?? 1;
 
+    // マウス位置を回転済みオブジェクトのローカル座標系に変換
     const rect = el.getBoundingClientRect();
-    const localX = (e.clientX - rect.left);
-    const localY = (e.clientY - rect.top);
-    // scale を考慮してエッジ判定用のローカル座標を算出
-    const elW = rect.width;
-    const elH = rect.height;
+    const rotR = (obj.rotation ?? 0) * Math.PI / 180;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const mdx = e.clientX - cx;
+    const mdy = e.clientY - cy;
+    const cosNR = Math.cos(-rotR);
+    const sinNR = Math.sin(-rotR);
+    const stageScale = scale;
+    const elW = pxW * stageScale;
+    const elH = pxH * stageScale;
+    const localX = mdx * cosNR - mdy * sinNR + elW / 2;
+    const localY = mdx * sinNR + mdy * cosNR + elH / 2;
     const edge = canResize ? getEdge(localX, localY, elW, elH) : null;
 
     if (!edge && !canDrag) {
@@ -384,8 +432,47 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
     e.stopPropagation();
     onSelect(obj.id);
 
+    // Alt 押下中は移動・リサイズをブロックし、回転のみ受け付ける
+    if (e.altKey) {
+      if (!canRotate || !onRotate) return;
+      const rect2 = el.getBoundingClientRect();
+      const centerX = rect2.left + rect2.width / 2;
+      const centerY = rect2.top + rect2.height / 2;
+      const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+      rotateRef.current = { centerX, centerY, startAngle, origRotation: obj.rotation ?? 0 };
+      setIsInteracting(true);
+      document.body.style.cursor = ROTATE_CURSOR;
+      if (stage?.draggable) stage.draggable(false);
+
+      const onPointerMove = (me: PointerEvent) => {
+        const state = rotateRef.current;
+        if (!state) return;
+        const angle = Math.atan2(me.clientY - state.centerY, me.clientX - state.centerX) * 180 / Math.PI;
+        const delta = angle - state.startAngle;
+        const raw = state.origRotation + delta;
+        const snapped = snapRotation(raw, me.shiftKey);
+        setLocalRotation(snapped);
+        localRotationRef.current = snapped;
+      };
+      const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        document.body.style.cursor = '';
+        setIsInteracting(false);
+        if (stage) stage.draggable(true);
+        const final = localRotationRef.current;
+        if (final !== null) onRotate(obj.id, final);
+        setLocalRotation(null);
+        localRotationRef.current = null;
+        rotateRef.current = null;
+      };
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      return;
+    }
+
     if (edge && onResize) {
-      // リサイズ開始
+      // リサイズ開始（回転枠: 逆行列でローカル座標に変換、アンカー固定で位置補正）
       if (stage?.draggable) stage.draggable(false);
       resizeRef.current = {
         edge,
@@ -397,24 +484,45 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
         origPxH: pxH,
       };
 
+      const rot = (obj.rotation ?? 0) * Math.PI / 180;
+      const cosR = Math.cos(rot);
+      const sinR = Math.sin(rot);
+      const cosNeg = Math.cos(-rot);
+      const sinNeg = Math.sin(-rot);
+
       const onPointerMove = (me: PointerEvent) => {
         const rs = resizeRef.current;
         if (!rs || !el) return;
         const currentScale = stage?.scaleX?.() ?? 1;
-        const curX = me.clientX / currentScale;
-        const curY = me.clientY / currentScale;
-        const dx = curX - rs.startPointerX;
-        const dy = curY - rs.startPointerY;
+        const rawDx = me.clientX / currentScale - rs.startPointerX;
+        const rawDy = me.clientY / currentScale - rs.startPointerY;
 
-        let newX = rs.origPxX;
-        let newY = rs.origPxY;
+        // マウスデルタをオブジェクトのローカル座標系に変換
+        const ldx = rawDx * cosNeg - rawDy * sinNeg;
+        const ldy = rawDx * sinNeg + rawDy * cosNeg;
+
+        // ローカル座標系でサイズ変更
         let newW = rs.origPxW;
         let newH = rs.origPxH;
+        if (rs.edge.right) newW = Math.max(MIN_SIZE_PX, rs.origPxW + ldx);
+        if (rs.edge.left) newW = Math.max(MIN_SIZE_PX, rs.origPxW - ldx);
+        if (rs.edge.bottom) newH = Math.max(MIN_SIZE_PX, rs.origPxH + ldy);
+        if (rs.edge.top) newH = Math.max(MIN_SIZE_PX, rs.origPxH - ldy);
 
-        if (rs.edge.right) newW = Math.max(MIN_SIZE_PX, rs.origPxW + dx);
-        if (rs.edge.left) { newW = Math.max(MIN_SIZE_PX, rs.origPxW - dx); newX = rs.origPxX + (rs.origPxW - newW); }
-        if (rs.edge.bottom) newH = Math.max(MIN_SIZE_PX, rs.origPxH + dy);
-        if (rs.edge.top) { newH = Math.max(MIN_SIZE_PX, rs.origPxH - dy); newY = rs.origPxY + (rs.origPxH - newH); }
+        // アンカー固定: サイズ変更による中心のローカルオフセットを算出し、
+        // 回転行列でワールド座標に変換して position を補正
+        let offsetLx = 0, offsetLy = 0;
+        if (rs.edge.right) offsetLx = (newW - rs.origPxW) / 2;
+        if (rs.edge.left) offsetLx = -(newW - rs.origPxW) / 2;
+        if (rs.edge.bottom) offsetLy = (newH - rs.origPxH) / 2;
+        if (rs.edge.top) offsetLy = -(newH - rs.origPxH) / 2;
+
+        // ローカルオフセットをワールド座標に回転
+        const worldOffX = offsetLx * cosR - offsetLy * sinR;
+        const worldOffY = offsetLx * sinR + offsetLy * cosR;
+
+        const newX = rs.origPxX + worldOffX - (newW - rs.origPxW) / 2;
+        const newY = rs.origPxY + worldOffY - (newH - rs.origPxH) / 2;
 
         el.style.left = `${newX}px`;
         el.style.top = `${newY}px`;
@@ -450,7 +558,7 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
         }
 
         onMove(obj.id, round(finalX / GRID_SIZE), round(finalY / GRID_SIZE));
-        onResize(obj.id, Math.max(fine ? 0.01 : 1, round(finalW / GRID_SIZE)), Math.max(fine ? 0.01 : 1, round(finalH / GRID_SIZE)));
+        onResize(obj.id, Math.max(0.01, round(finalW / GRID_SIZE)), Math.max(0.01, round(finalH / GRID_SIZE)));
         setIsInteracting(false);
       };
 
@@ -519,28 +627,43 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
     }
-  }, [obj.id, obj.position_locked, obj.size_locked, pxX, pxY, pxW, pxH, isDraggable, isResizable, stageRef, onMove, onSelect, onResize]);
+  }, [obj.id, obj.position_locked, obj.size_locked, obj.rotation, pxX, pxY, pxW, pxH, isDraggable, isResizable, canRotate, stageRef, onMove, onSelect, onResize, onRotate]);
 
-  // エッジホバーでカーソル変更
+  // エッジホバーでカーソル変更（Alt 中は回転カーソル）
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const el = elRef.current;
     if (!el) return;
+    if (e.altKey && canRotate) {
+      el.style.cursor = ROTATE_CURSOR;
+      return;
+    }
     if (canResize) {
       const rect = el.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const localY = e.clientY - rect.top;
-      const edge = getEdge(localX, localY, rect.width, rect.height);
-      // エッジ上: リサイズカーソル、中央かつドラッグ不可: grab、中央かつドラッグ可: move
-      el.style.cursor = edge ? edgeToCursor(edge) : (canDrag ? 'move' : 'grab');
+      const rotR = (obj.rotation ?? 0) * Math.PI / 180;
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const mdx = e.clientX - cx;
+      const mdy = e.clientY - cy;
+      const cosNR = Math.cos(-rotR);
+      const sinNR = Math.sin(-rotR);
+      const stage = stageRef.current;
+      const s = stage?.scaleX?.() ?? 1;
+      const elW = pxW * s;
+      const elH = pxH * s;
+      const localX = mdx * cosNR - mdy * sinNR + elW / 2;
+      const localY = mdx * sinNR + mdy * cosNR + elH / 2;
+      const edge = getEdge(localX, localY, elW, elH);
+      el.style.cursor = edge ? edgeToCursor(edge, obj.rotation ?? 0) : (canDrag ? 'move' : 'grab');
     }
-  }, [canResize, canDrag]);
+  }, [canResize, canDrag, canRotate, obj.rotation, pxW, pxH, stageRef]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onEdit(obj.id);
   }, [obj.id, onEdit]);
 
-  const selectionBoxShadow = isSelected
+  const fullyLocked = obj.position_locked && obj.size_locked;
+  const selectionBoxShadow = isSelected && !fullyLocked
     ? '0 0 0 calc(3px * var(--inv-zoom, 1)) rgba(255,255,255,0.5), 0 0 0 calc(4.5px * var(--inv-zoom, 1)) rgba(60,140,255,0.6)'
     : undefined;
 
@@ -559,6 +682,8 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
         boxShadow: selectionBoxShadow,
         cursor: canDrag ? 'move' : 'grab',
         transition: isInteracting ? 'none' : 'left 0.2s ease-out, top 0.2s ease-out, width 0.2s ease-out, height 0.2s ease-out',
+        transform: rotDeg ? `rotate(${rotDeg}deg)` : undefined,
+        transformOrigin: 'center center',
         ...extraStyle,
       }}
       onPointerDown={handlePointerDown}
@@ -675,7 +800,7 @@ function releaseBlobUrl(imageUrl: string): void {
   }
 }
 
-export function useAnimatedBlobSrc(imageUrl: string | null | undefined): string | null {
+export function useAnimatedBlobSrc(imageUrl: string | null | undefined): { src: string | null; onError: () => void } {
   // blobCache/preloadedBlobs から blob を取得し、表示用に毎回新しい blob URL を生成する。
   // 同じ blob URL を再利用するとブラウザのアニメーションデコードキャッシュにより
   // GIF/WebP/APNG が再生されない場合があるため、コンポーネントごとに固有の blob URL を持つ。
@@ -780,7 +905,55 @@ export function useAnimatedBlobSrc(imageUrl: string | null | undefined): string 
     };
   }, []);
 
-  return blobSrc ?? (imageUrl || null);
+  const onError = () => {
+    // blob URL が revoke された場合、フォールバックして Worker URL を表示
+    if (displayBlobUrlRef.current) {
+      URL.revokeObjectURL(displayBlobUrlRef.current);
+      displayBlobUrlRef.current = null;
+    }
+    // imageUrl（Worker URL）にフォールバック。Cache-Control: immutable なので追加通信はほぼない
+    setBlobSrc(imageUrl || null);
+
+    // バックグラウンドで blob を再 fetch
+    if (imageUrl && !imageUrl.startsWith('data:')) {
+      const apply = (blob: Blob) => {
+        if (!mountedRef.current) return;
+        // 表示用にフレッシュな blob URL を生成
+        const freshUrl = URL.createObjectURL(blob);
+        displayBlobUrlRef.current = freshUrl;
+        setBlobSrc(freshUrl);
+      };
+
+      const existing = blobCache.get(imageUrl);
+      if (existing) {
+        apply(existing.blob);
+      } else {
+        const preloaded = preloadedBlobs.get(imageUrl);
+        if (preloaded) {
+          preloadedBlobs.delete(imageUrl);
+          apply(preloaded);
+        } else {
+          let fetchPromise = pendingFetches.get(imageUrl);
+          if (!fetchPromise) {
+            fetchPromise = fetch(imageUrl).then(r => r.blob());
+            pendingFetches.set(imageUrl, fetchPromise);
+            fetchPromise.finally(() => pendingFetches.delete(imageUrl));
+          }
+          fetchPromise
+            .then(blob => apply(blob))
+            .catch(() => {
+              // 再 fetch 失敗時は Worker URL のままフォールバック
+              if (mountedRef.current) setBlobSrc(imageUrl);
+            });
+        }
+      }
+    }
+  };
+
+  return {
+    src: blobSrc ?? (imageUrl || null),
+    onError,
+  };
 }
 
 /**
@@ -816,7 +989,7 @@ export function preloadImageBlobs(urls: string[]): void {
 
 // --- PanelObject (DOM版) ---
 const DomPanelObject = memo(function DomPanelObject({
-  obj, isSelected, stageRef, onMove, onSelect, onEdit, onResize, baseZIndex, assets: _assets,
+  obj, isSelected, stageRef, onMove, onSelect, onEdit, onResize, onRotate, baseZIndex, assets: _assets,
 }: {
   obj: BoardObject; isSelected: boolean;
   stageRef: React.RefObject<any>;
@@ -824,16 +997,17 @@ const DomPanelObject = memo(function DomPanelObject({
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onResize?: (id: string, w: number, h: number) => void;
+  onRotate?: (id: string, rotation: number) => void;
   baseZIndex?: number;
   assets?: Asset[];
 }) {
-  const blobSrc = useAnimatedBlobSrc(resolveAssetId(obj.image_asset_id));
+  const { src: blobSrc, onError: handleBlobError } = useAnimatedBlobSrc(resolveAssetId(obj.image_asset_id));
 
   return (
     <DomObjectWrapper
       obj={obj} isSelected={isSelected} isDraggable={!obj.position_locked}
       isResizable={!obj.size_locked} stageRef={stageRef}
-      onMove={onMove} onSelect={onSelect} onEdit={onEdit} onResize={onResize}
+      onMove={onMove} onSelect={onSelect} onEdit={onEdit} onResize={onResize} onRotate={onRotate}
       style={{ zIndex: baseZIndex }}
     >
       <div style={{
@@ -844,6 +1018,7 @@ const DomPanelObject = memo(function DomPanelObject({
         {blobSrc ? (
           <img
             src={blobSrc}
+            onError={handleBlobError}
             style={{
               width: '100%', height: '100%',
               objectFit: obj.image_fit === 'stretch' ? 'fill' : obj.image_fit,
@@ -859,7 +1034,7 @@ const DomPanelObject = memo(function DomPanelObject({
 
 // --- TextObject (DOM版) ---
 const DomTextObject = memo(function DomTextObject({
-  obj, isSelected, stageRef, onMove, onSelect, onEdit, onResize, onSyncSize, baseZIndex,
+  obj, isSelected, stageRef, onMove, onSelect, onEdit, onResize, onRotate, onSyncSize, baseZIndex,
 }: {
   obj: BoardObject; isSelected: boolean;
   stageRef: React.RefObject<any>;
@@ -867,6 +1042,7 @@ const DomTextObject = memo(function DomTextObject({
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onResize?: (id: string, w: number, h: number) => void;
+  onRotate?: (id: string, rotation: number) => void;
   onSyncSize?: (id: string, w: number, h: number) => void;
   baseZIndex?: number;
 }) {
@@ -905,7 +1081,7 @@ const DomTextObject = memo(function DomTextObject({
     <DomObjectWrapper
       obj={obj} isSelected={isSelected} isDraggable={!obj.position_locked}
       isResizable={!obj.size_locked} stageRef={stageRef}
-      onMove={onMove} onSelect={onSelect} onEdit={onEdit} onResize={onResize}
+      onMove={onMove} onSelect={onSelect} onEdit={onEdit} onResize={onResize} onRotate={onRotate}
       style={{ ...autoSizeStyle, zIndex: baseZIndex }}
     >
       <div ref={contentRef} style={{
@@ -938,6 +1114,7 @@ interface FgLayerData {
   key: number;
   src: string;
   fadeOut: boolean;
+  onError?: () => void;
 }
 
 /** 個別のフェードレイヤー。fadeOut 変化を useEffect で検知して CSS transition を発動 */
@@ -991,6 +1168,7 @@ const FgLayerItem = memo(function FgLayerItem({
       <img
         src={layer.src}
         alt=""
+        onError={layer.onError}
         style={{ width: '100%', height: '100%', objectFit: objectFit as any, display: 'block' }}
         draggable={false}
       />
@@ -1013,7 +1191,7 @@ const DomForegroundObject = memo(function DomForegroundObject({
 }) {
   const isSolid = !!activeScene?.fg_color_enabled;
   const fgAssetUrl = resolveAssetId(activeScene?.foreground_asset_id ?? null);
-  const blobSrc = useAnimatedBlobSrc(
+  const { src: blobSrc, onError: handleBlobError } = useAnimatedBlobSrc(
     isSolid ? colorToDataUrl(activeScene?.fg_color ?? '#666666') : fgAssetUrl
   );
   const fgDuration = fadeInDuration ?? 0;
@@ -1040,14 +1218,14 @@ const DomForegroundObject = memo(function DomForegroundObject({
       const newKey = fgKeyRef.current;
       setFgLayers(prev => [
         ...prev.map(l => l.fadeOut ? l : { ...l, fadeOut: true }),  // 全既存レイヤーをフェードアウトに
-        ...(src ? [{ key: newKey, src, fadeOut: false }] : []),  // 新レイヤー
+        ...(src ? [{ key: newKey, src, fadeOut: false, onError: handleBlobError }] : []),  // 新レイヤー
       ]);
     } else {
       // 即切替
       fgKeyRef.current += 1;
-      setFgLayers(src ? [{ key: fgKeyRef.current, src, fadeOut: false }] : []);
+      setFgLayers(src ? [{ key: fgKeyRef.current, src, fadeOut: false, onError: handleBlobError }] : []);
     }
-  }, [blobSrc, fgDuration]);
+  }, [blobSrc, fgDuration, handleBlobError]);
 
   // activeScene から前景の位置・サイズを取得してオブジェクトを上書き
   const fgObj = activeScene ? {
@@ -1165,7 +1343,7 @@ const DomCharacterItem = memo(function DomCharacterItem({
   assets?: Asset[];
 }) {
   const imageAssetId = resolveAssetId(char.images[char.active_image_index]?.asset_id ?? null);
-  const blobSrc = useAnimatedBlobSrc(imageAssetId);
+  const { src: blobSrc, onError: handleBlobError } = useAnimatedBlobSrc(imageAssetId);
   const elRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startPointerX: number; startPointerY: number; origPxX: number; origPxY: number } | null>(null);
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -1361,6 +1539,7 @@ const DomCharacterItem = memo(function DomCharacterItem({
       {blobSrc ? (
         <img
           src={blobSrc}
+          onError={handleBlobError}
           style={{
             height: '100%',
             width: 'auto',
@@ -1558,7 +1737,7 @@ function generateStableKeys(
 export const DomObjectOverlay = memo(forwardRef<HTMLDivElement, DomObjectOverlayProps>(
   function DomObjectOverlay({
     objects, selectedObjectId, selectedObjectIds = [], activeScene,
-    stageRef, onMoveObject, onSelectObject, onEditObject, onResizeObject, onSyncObjectSize,
+    stageRef, onMoveObject, onSelectObject, onEditObject, onResizeObject, onRotateObject, onSyncObjectSize,
     characters = [], onUpdateCharacterBoardPosition, currentUserId, onSelectCharacter, onDoubleClickCharacter,
     selectedCharacterId,
   }, ref) {
@@ -1713,6 +1892,7 @@ export const DomObjectOverlay = memo(forwardRef<HTMLDivElement, DomObjectOverlay
                     onMove={onMoveObject} onSelect={onSelectObject}
                     onEdit={onEditObject}
                     onResize={obj.size_locked ? undefined : onResizeObject}
+                    onRotate={obj.size_locked ? undefined : onRotateObject}
                     baseZIndex={baseZIndex}
                     assets={assets}
                   />
@@ -1725,6 +1905,7 @@ export const DomObjectOverlay = memo(forwardRef<HTMLDivElement, DomObjectOverlay
                     onMove={onMoveObject} onSelect={onSelectObject}
                     onEdit={onEditObject}
                     onResize={obj.size_locked ? undefined : onResizeObject}
+                    onRotate={obj.size_locked ? undefined : onRotateObject}
                     onSyncSize={onSyncObjectSize}
                     baseZIndex={baseZIndex}
                   />

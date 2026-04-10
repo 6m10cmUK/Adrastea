@@ -12,6 +12,7 @@ import type {
   ScenarioText,
   Cutin,
   BgmTrack,
+  ChatChannel,
 } from '../types/adrastea.types';
 import type { useAdrastea } from '../hooks/useAdrastea';
 import type { useAdrasteaChat } from '../hooks/useAdrasteaChat';
@@ -19,6 +20,7 @@ import type { useScenes } from '../hooks/useScenes';
 import type { useCharacters } from '../hooks/useCharacters';
 import type { useScenarioTexts } from '../hooks/useScenarioTexts';
 import type { useCutins } from '../hooks/useCutins';
+import type { useChannels } from '../hooks/useChannels';
 import type { PanelSelection } from './AdrasteaContext';
 
 // ============================================================================
@@ -93,6 +95,11 @@ export interface RoomDataContextValue {
   reorderCutins: ReturnType<typeof useCutins>['reorderCutins'];
   triggerCutin: ReturnType<typeof useCutins>['triggerCutin'];
   clearCutin: ReturnType<typeof useCutins>['clearCutin'];
+
+  // --- Chat Channels ---
+  channels: ChatChannel[];
+  upsertChannel: ReturnType<typeof useChannels>['upsertChannel'];
+  deleteChannel: ReturnType<typeof useChannels>['deleteChannel'];
 
   // --- BGMs ---
   bgms: BgmTrack[];

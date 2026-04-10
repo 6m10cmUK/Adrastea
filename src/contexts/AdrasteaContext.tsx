@@ -10,10 +10,6 @@ import { useUIState } from './UIStateProvider';
 import { checkPermission, type PermissionKey } from '../config/permissions';
 import { useToast } from '../components/ui/Toast';
 import { useUndoRedo, type UndoRedoHandle } from '../hooks/useUndoRedo';
-import { useInitialRoomData } from '../hooks/useInitialRoomData';
-import { useChannels } from '../hooks/useChannels';
-import { useScenarioTexts } from '../hooks/useScenarioTexts';
-import { useCutins } from '../hooks/useCutins';
 import { resolveAssetId } from '../hooks/useAssets';
 import { computeDiffs } from '../utils/undoDiff';
 import type { UndoEntry } from '../utils/undoDiff';
@@ -251,18 +247,12 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
   }, []);
 
   // --- RPC 初期データ（キャッシュ経由で RoomDataProvider と共有） ---
-  const { data: initialRoomData, loading: initialLoading } = useInitialRoomData(roomId);
-  const rpcReady = !initialLoading;
+  // NOTE: initialRoomData は useScenarioTexts/useCutins/useChannels に渡してた
+  // が、現在は RoomDataProvider 側で使われてるため、ここでは不要
+  // useInitialRoomData(roomId);
 
-  // --- ScenarioTexts & Cutins (lazy-load 廃止、常時ロード) ---
-  const {
-    scenarioTexts, addScenarioText, updateScenarioText,
-    removeScenarioText, reorderScenarioTexts,
-  } = useScenarioTexts(roomId, rpcReady, { initialData: initialRoomData?.scenario_texts });
-  const {
-    cutins, addCutin, updateCutin, removeCutin,
-    reorderCutins, triggerCutin, clearCutin,
-  } = useCutins(roomId, rpcReady, undefined, { initialData: initialRoomData?.cutins });
+  // --- Channels (ダミー値: useAdrasteaContext で RoomDataContext 経由で上書き) ---
+  const channels: any[] = [];
 
   // --- Permission guard ref ---
   const roomRoleRef = useRef(roomRole);
@@ -296,14 +286,6 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
       y: Math.round(((h / 2) - stagePos.y) / scale / 10),
     };
   }, []);
-
-  // --- Channels hook ---
-  const { channels, upsertChannel, deleteChannel } = useChannels(roomId, {
-    enabled: rpcReady,
-    initialData: initialRoomData?.channels,
-    viewAsUserId: user?.uid,
-    viewAsRoomRole: roomRole,
-  });
 
   // --- Chat state ---
   const [activeChatChannel, setActiveChatChannelState] = useState<string>('main');
@@ -455,9 +437,10 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
       setActiveChatChannel,
       chatInjectText,
       setChatInjectText,
-      channels,
-      upsertChannel,
-      deleteChannel,
+      // channels, upsertChannel, deleteChannel はダミー値（useAdrasteaContext でroomDataCtxから上書き）
+      channels: [],
+      upsertChannel: async () => {},
+      deleteChannel: async () => {},
       scenes: [],
       addScene: async () => '',
       updateScene: async () => {},
@@ -482,18 +465,19 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
       removeObject: async () => {},
       reorderObjects: async () => {},
       batchUpdateSort: async () => {},
-      scenarioTexts,
-      addScenarioText,
-      updateScenarioText,
-      removeScenarioText,
-      reorderScenarioTexts,
-      cutins,
-      addCutin,
-      updateCutin,
-      removeCutin,
-      reorderCutins,
-      triggerCutin,
-      clearCutin,
+      // scenarioTexts, cutins はダミー値（useAdrasteaContext でroomDataCtxから上書き）
+      scenarioTexts: [],
+      addScenarioText: async () => '',
+      updateScenarioText: async () => {},
+      removeScenarioText: async () => {},
+      reorderScenarioTexts: async () => {},
+      cutins: [],
+      addCutin: async () => '',
+      updateCutin: async () => {},
+      removeCutin: async () => {},
+      reorderCutins: async () => {},
+      triggerCutin: async () => {},
+      clearCutin: async () => {},
       bgms: [],
       addBgm: async () => '',
       updateBgm: async () => {},
@@ -563,12 +547,10 @@ export const AdrasteaProvider: React.FC<AdrasteaProviderProps> = ({ children, ro
       setMembers,
     };
   }, [
-    roomId, roomRole, activeChatChannel, chatInjectText, channels, upsertChannel, deleteChannel,
+    roomId, roomRole, activeChatChannel, chatInjectText,
     characterToOpenModal, boardRef, profile, user, signOut, updateProfile, onAddObject, deleteRoom,
     withPermission, isLoading, loadingProgress, loadingSteps, setPendingEdit, flushPendingEdits, registerPanel,
     unregisterPanel, toasts, showToast, undoRedo,
-    scenarioTexts, addScenarioText, updateScenarioText, removeScenarioText, reorderScenarioTexts,
-    cutins, addCutin, updateCutin, removeCutin, reorderCutins, triggerCutin, clearCutin,
     members,
   ]);
 
@@ -822,6 +804,21 @@ export function useAdrasteaContext(): AdrasteaContextValue {
       removeBgm: roomDataCtx.removeBgm,
       reorderBgms: roomDataCtx.reorderBgms,
       activeScene: roomDataCtx.activeScene,
+      scenarioTexts: roomDataCtx.scenarioTexts,
+      addScenarioText: roomDataCtx.addScenarioText,
+      updateScenarioText: roomDataCtx.updateScenarioText,
+      removeScenarioText: roomDataCtx.removeScenarioText,
+      reorderScenarioTexts: roomDataCtx.reorderScenarioTexts,
+      cutins: roomDataCtx.cutins,
+      addCutin: roomDataCtx.addCutin,
+      updateCutin: roomDataCtx.updateCutin,
+      removeCutin: roomDataCtx.removeCutin,
+      reorderCutins: roomDataCtx.reorderCutins,
+      triggerCutin: roomDataCtx.triggerCutin,
+      clearCutin: roomDataCtx.clearCutin,
+      channels: roomDataCtx.channels,
+      upsertChannel: roomDataCtx.upsertChannel,
+      deleteChannel: roomDataCtx.deleteChannel,
       // Loading state
       isLoading: !roomDataCtx.dataReady,
       loadingProgress: roomDataCtx.dataReady ? 1 : 0.5,

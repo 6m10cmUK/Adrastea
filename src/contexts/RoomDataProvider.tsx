@@ -12,6 +12,9 @@ import { useCharacters, type CharacterStatusesPersistedPayload } from '../hooks/
 import { buildStatusChangeChatContents } from '../utils/statusChangeChat';
 import { useObjects } from '../hooks/useObjects';
 import { useBgms } from '../hooks/useBgms';
+import { useScenarioTexts } from '../hooks/useScenarioTexts';
+import { useCutins } from '../hooks/useCutins';
+import { useChannels } from '../hooks/useChannels';
 import { useAssets, resolveAssetId, primeAssetCache } from '../hooks/useAssets';
 import { preloadImageBlobs } from '../components/DomObjectOverlay';
 import { useInitialRoomData } from '../hooks/useInitialRoomData';
@@ -37,6 +40,7 @@ interface RoomDataProviderProps {
   ) => F;
   user: AuthUser | null;
   activeChatChannel: string;
+  roomRole?: string;
 }
 
 export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
@@ -46,6 +50,7 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
   withPermission,
   user,
   activeChatChannel,
+  roomRole,
 }) => {
   // --- Chat state management ---
   const [activeSpeakerCharId, setActiveSpeakerCharId] = useState<string | null>(null);
@@ -104,8 +109,6 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
     },
     [sendMessage]
   );
-
-  // NOTE: channels, upsertChannel, deleteChannel は AdrasteaContext で管理される
 
   const {
     scenes,
@@ -176,10 +179,6 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
     enabled: rpcReady,
   });
 
-
-  // NOTE: scenarioTexts と cutins は AdrasteaContext で管理される
-  // （lazy loading のため、UIState の activePanels に依存）
-
   const {
     bgms,
     loading: bgmsLoading,
@@ -190,6 +189,23 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
   } = useBgms(roomId, {
     initialData: initialRoomData?.bgms,
     enabled: rpcReady,
+  });
+
+  const {
+    scenarioTexts, addScenarioText, updateScenarioText, removeScenarioText, reorderScenarioTexts,
+  } = useScenarioTexts(roomId, rpcReady, { initialData: initialRoomData?.scenario_texts });
+
+  const {
+    cutins, addCutin, updateCutin, removeCutin, reorderCutins, triggerCutin, clearCutin,
+  } = useCutins(roomId, rpcReady, undefined, { initialData: initialRoomData?.cutins });
+
+  const {
+    channels, upsertChannel, deleteChannel,
+  } = useChannels(roomId, {
+    enabled: rpcReady,
+    initialData: initialRoomData?.channels,
+    viewAsUserId: user?.uid,
+    viewAsRoomRole: roomRole,
   });
 
   const { loading: assetsLoading } = useAssets();
@@ -568,21 +584,26 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
       reorderObjects: guardedReorderObjects,
       batchUpdateSort: guardedBatchSort,
 
-      // ScenarioTexts (lazy-loaded, provided by AdrasteaContext)
-      scenarioTexts: [] as any,
-      addScenarioText: (async () => '') as any,
-      updateScenarioText: (async () => {}) as any,
-      removeScenarioText: (async () => {}) as any,
-      reorderScenarioTexts: (async () => {}) as any,
+      // ScenarioTexts
+      scenarioTexts,
+      addScenarioText,
+      updateScenarioText,
+      removeScenarioText,
+      reorderScenarioTexts,
 
-      // Cutins (lazy-loaded, provided by AdrasteaContext)
-      cutins: [] as any,
-      addCutin: (async () => '') as any,
-      updateCutin: (async () => {}) as any,
-      removeCutin: (async () => {}) as any,
-      reorderCutins: (async () => {}) as any,
-      triggerCutin: (async () => {}) as any,
-      clearCutin: (async () => {}) as any,
+      // Cutins
+      cutins,
+      addCutin,
+      updateCutin,
+      removeCutin,
+      reorderCutins,
+      triggerCutin,
+      clearCutin,
+
+      // Channels
+      channels,
+      upsertChannel,
+      deleteChannel,
 
       // BGMs
       bgms,
@@ -640,6 +661,21 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
       updateBgm,
       removeBgm,
       guardedReorderBgms,
+      scenarioTexts,
+      addScenarioText,
+      updateScenarioText,
+      removeScenarioText,
+      reorderScenarioTexts,
+      cutins,
+      addCutin,
+      updateCutin,
+      removeCutin,
+      reorderCutins,
+      triggerCutin,
+      clearCutin,
+      channels,
+      upsertChannel,
+      deleteChannel,
       activeScene,
       dataReady,
       imagesReady,
