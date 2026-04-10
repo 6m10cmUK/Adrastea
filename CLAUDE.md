@@ -63,6 +63,18 @@ npx tsc -b                       # 型チェック
 - `MockAdrasteaProvider` がモックデータを提供（Supabase 不要）
 - デモモードでは `/demo` 以外は 404 にリダイレクト
 
+### バージョン管理
+
+- `package.json` の `version` が正本。Vite ビルド時に `__APP_VERSION__` として注入
+- `src/config/adrastea.ts` の `ADRASTEA_VERSION` が自動取得。手動編集不要
+- セマンティックバージョニング: 破壊的変更=major、機能追加=minor、バグ修正=patch
+- バージョンアップは `npm version patch/minor/major` で行う
+
+### ブランチ・PR
+
+- `develop` ブランチで開発、`main` へ PR でマージ
+- タグ push でデプロイ（`npm version` がタグも自動作成）
+
 ### デプロイ
 
 - Cloudflare Pages。GitHub Actions でタグ push 時にデプロイ
