@@ -53,6 +53,7 @@ export type PanelSelectionType = 'scene' | 'character' | 'layer' | 'bgm' | 'scen
 export interface KeyboardActions {
   copy?: () => void;
   duplicate?: () => void;
+  paste?: () => void;
   delete?: () => void;
 }
 export interface PanelSelection {

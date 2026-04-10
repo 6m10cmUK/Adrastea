@@ -98,6 +98,7 @@ function AdrasteaRoom({ uid: _uid, token: _token }: AdrasteaRoomProps) {
     activeSceneId: ctx.activeScene?.id ?? null,
     existingCharacterNames: ctx.characters?.map(c => c.name),
     existingScenarioTitles: ctx.scenarioTexts?.map(t => t.title),
+    keyboardActionsRef: ctx.keyboardActionsRef,
   });
 
   // メンバー管理（全メンバーが取得可能、users JOIN で display_name/avatar_url も取得）

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { AssetLibraryModal } from './AssetLibraryModal';
 import { bgmToClipboardJson, parseClipboardData, pasteBgmToScene } from '../utils/clipboardImport';
+import { calcInsertSortOrder } from '../utils/sortOrder';
 
 const extractVideoId = (url: string): string => {
   const match = url.match(/(?:youtu\.be\/|v=)([^&\s]+)/);
@@ -430,14 +431,21 @@ export function BgmPanel() {
       const text = await navigator.clipboard.readText();
       const result = parseClipboardData(text);
       if (result?.type === 'bgm') {
-        await Promise.all(result.data.map(d => pasteBgmToScene(d, activeScene?.id ?? null, { bgms, updateBgm, addBgm })));
+        const lastSelId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
+        let so = calcInsertSortOrder(bgms, lastSelId, b => b.sort_order ?? 0) ?? bgms.length;
+        const wrappedAddBgm = async (data: Partial<BgmTrack>) => {
+          const id = await addBgm({ ...data, sort_order: so });
+          so += 0.001;
+          return id;
+        };
+        await Promise.all(result.data.map(d => pasteBgmToScene(d, activeScene?.id ?? null, { bgms, updateBgm, addBgm: wrappedAddBgm })));
         const count = result.data.length;
         showToast(count > 1 ? `${count}件のBGMをインポートしました` : `BGM "${result.data[0]?.name ?? 'BGM'}" をインポートしました`, 'success');
       }
     } catch {
       showToast('クリップボードの読み取りに失敗しました', 'error');
     }
-  }, [addBgm, showToast, activeScene, canManageBgm]);
+  }, [addBgm, showToast, activeScene, canManageBgm, bgms, selectedIds]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!pendingRemoveIds) return;
@@ -456,6 +464,7 @@ export function BgmPanel() {
             showToast(tracks.length > 1 ? `${tracks.length}件のBGMをコピーしました` : `${tracks[0].name} をコピーしました`, 'success');
           }
         },
+        paste: canManageBgm ? handlePaste : undefined,
         delete: canManageBgm ? () => {
           if (selectedIds.length > 0) {
             setPendingRemoveIds(selectedIds);
@@ -468,7 +477,7 @@ export function BgmPanel() {
         keyboardActionsRef.current = {};
       }
     };
-  }, [selectedIds, bgms, showToast, addBgm, panelSelection, keyboardActionsRef, canManageBgm]);
+  }, [selectedIds, bgms, showToast, addBgm, panelSelection, keyboardActionsRef, canManageBgm, handlePaste]);
 
   const handleAddFromPicker = useCallback(async (url: string, _assetId?: string, assetTitle?: string) => {
     if (!activeScene) return;
@@ -490,6 +499,9 @@ export function BgmPanel() {
       return;
     }
 
+    const lastSelId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
+    const insertSort = calcInsertSortOrder(bgms, lastSelId, b => b.sort_order ?? 0);
+
     if (isYoutube) {
       const validTitle = assetTitle && assetTitle !== 'watch' ? assetTitle : null;
       let title = validTitle || videoId;
@@ -502,14 +514,14 @@ export function BgmPanel() {
           // タイトル取得失敗時はvideoIdのまま
         }
       }
-      addBgm({ name: title, bgm_type: 'youtube', bgm_source: videoId, scene_ids: [activeScene.id], auto_play_scene_ids: [activeScene.id] });
+      await addBgm({ name: title, bgm_type: 'youtube', bgm_source: videoId, scene_ids: [activeScene.id], auto_play_scene_ids: [activeScene.id], sort_order: insertSort });
     } else {
       const name = assetTitle
         || decodeURIComponent(normalizedUrl.split('/').pop()?.split('?')[0] || '新規BGM').replace(/^\d+_/, '');
-      addBgm({ name, bgm_type: 'url', bgm_source: normalizedUrl, scene_ids: [activeScene.id], auto_play_scene_ids: [activeScene.id] });
+      await addBgm({ name, bgm_type: 'url', bgm_source: normalizedUrl, scene_ids: [activeScene.id], auto_play_scene_ids: [activeScene.id], sort_order: insertSort });
     }
     setShowAddPicker(false);
-  }, [addBgm, updateBgm, bgms, activeScene]);
+  }, [addBgm, updateBgm, bgms, activeScene, selectedIds]);
 
   return (
     <>

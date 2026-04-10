@@ -3,7 +3,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { Plus, Send, Trash2, Copy } from 'lucide-react';
 import { theme } from '../styles/theme';
 import type { ScenarioText } from '../types/adrastea.types';
-import { SortableListPanel, SortableListItem, Tooltip } from './ui';
+import { SortableListPanel, SortableListItem, Tooltip, ConfirmModal } from './ui';
 import { DropdownMenu, shortcutLabel } from './ui/DropdownMenu';
 
 interface ScenarioTextPanelProps {
@@ -18,7 +18,7 @@ interface ScenarioTextPanelProps {
   onDuplicate?: (textIds: string[]) => void;
   onPaste?: () => void;
   channels?: { channel_id: string; label: string }[];
-  keyboardActionsRef?: React.MutableRefObject<{ copy?: () => void; duplicate?: () => void; delete?: () => void }>;
+  keyboardActionsRef?: React.MutableRefObject<{ copy?: () => void; duplicate?: () => void; delete?: () => void; paste?: () => void }>;
   panelSelection?: { panel: string; ids: string[] } | null;
 }
 
@@ -97,6 +97,7 @@ export function ScenarioTextPanel({
     keyboardActionsRef.current = {
       copy: () => onCopy?.(selectedIds),
       duplicate: () => onDuplicate?.(selectedIds),
+      paste: onPaste,
       delete: () => {
         if (selectedIds.length > 0) {
           setPendingDeleteIds(selectedIds);
@@ -281,67 +282,16 @@ export function ScenarioTextPanel({
       />
 
       {pendingDeleteIds && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000,
+        <ConfirmModal
+          message={pendingDeleteIds.length > 1 ? `${pendingDeleteIds.length}件のテキストメモを削除しますか？` : `「${texts.find(t => t.id === pendingDeleteIds[0])?.title || 'テキストメモ'}」を削除しますか？`}
+          confirmLabel="削除"
+          danger
+          onConfirm={() => {
+            onRemove(pendingDeleteIds);
+            setPendingDeleteIds(null);
           }}
-          onClick={() => setPendingDeleteIds(null)}
-        >
-          <div
-            style={{
-              background: theme.bgSurface,
-              border: `1px solid ${theme.border}`,
-              borderRadius: '8px',
-              padding: '16px',
-              maxWidth: '400px',
-              boxShadow: theme.shadowLg,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p style={{ color: theme.textPrimary, marginBottom: '16px', fontSize: '14px' }}>
-              {pendingDeleteIds.length > 1 ? `${pendingDeleteIds.length}件のテキストメモを削除しますか？` : `「${texts.find(t => t.id === pendingDeleteIds[0])?.title || 'テキストメモ'}」を削除しますか？`}
-            </p>
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setPendingDeleteIds(null)}
-                style={{
-                  padding: '6px 12px',
-                  border: `1px solid ${theme.border}`,
-                  background: theme.bgInput,
-                  color: theme.textPrimary,
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                }}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => {
-                  onRemove(pendingDeleteIds);
-                  setPendingDeleteIds(null);
-                }}
-                style={{
-                  padding: '6px 12px',
-                  border: 'none',
-                  background: theme.danger,
-                  color: 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                }}
-              >
-                削除
-              </button>
-            </div>
-          </div>
-        </div>
+          onCancel={() => setPendingDeleteIds(null)}
+        />
       )}
     </>
   );

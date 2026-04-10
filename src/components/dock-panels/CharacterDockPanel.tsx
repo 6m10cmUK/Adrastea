@@ -8,6 +8,7 @@ import { CharacterEditor, type CharacterEditorHandle } from '../CharacterEditor'
 import { AdModal, ConfirmModal } from '../ui';
 import type { Character } from '../../types/adrastea.types';
 import { canClipboardCopyCharacters } from '../../config/permissions';
+import { calcInsertSortOrder } from '../../utils/sortOrder';
 export function CharacterDockPanel() {
   const ctx = useAdrasteaContext();
   const [modalChar, setModalChar] = useState<Character | null | undefined>(undefined);
@@ -25,6 +26,11 @@ export function CharacterDockPanel() {
     }
   }, [ctx.characterToOpenModal, ctx]);
 
+  const getInsertSortOrder = () => {
+    const lastSelId = selectedCharIds.length > 0 ? selectedCharIds[selectedCharIds.length - 1] : null;
+    return calcInsertSortOrder(ctx.layerOrderedCharacters, lastSelId, c => c.sort_order ?? 0);
+  };
+
   const handleAddCharacter = async () => {
     ctx.clearAllEditing();
     const center = ctx.getBoardCenter();
@@ -33,6 +39,7 @@ export function CharacterDockPanel() {
       board_visible: true,
       board_x: center?.x ?? 0,
       board_y: center?.y ?? 0,
+      sort_order: getInsertSortOrder(),
     });
     ctx.setEditingCharacter(newChar);
     setSelectedCharIds([newChar.id]);
@@ -84,14 +91,17 @@ export function CharacterDockPanel() {
   const handleDuplicateCharacters = async (ids: string[]) => {
     const chars = ctx.characters.filter(c => ids.includes(c.id));
     try {
-      await Promise.all(chars.map(char => {
+      let so = getInsertSortOrder() ?? ctx.layerOrderedCharacters.length;
+      for (const char of chars) {
         const { id, _id, _creationTime, ...rest } = char as any;
-        return ctx.addCharacter({
+        await ctx.addCharacter({
           ...rest,
           owner_id: ctx.user?.uid ?? '',
           name: `${char.name} (コピー)`,
+          sort_order: so,
         });
-      }));
+        so += 0.001;
+      }
     } catch (err) {
       console.error('キャラクター複製失敗:', err);
     }
@@ -126,6 +136,7 @@ export function CharacterDockPanel() {
       ctx.keyboardActionsRef.current = {
         copy: () => handleCopy(selectedCharIds),
         duplicate: () => handleDuplicateCharacters(selectedCharIds),
+        paste: handlePaste,
         delete: () => {
           if (selectedCharIds.length > 0) {
             setPendingDeleteIds(selectedCharIds);
@@ -143,9 +154,14 @@ export function CharacterDockPanel() {
   const handlePaste = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
+      let so = getInsertSortOrder() ?? ctx.layerOrderedCharacters.length;
       await handleClipboardImport(
         text,
-        (data) => ctx.addCharacter({ ...data, owner_id: ctx.user?.uid ?? '' }),
+        async (data) => {
+          const c = await ctx.addCharacter({ ...data, owner_id: ctx.user?.uid ?? '', sort_order: so });
+          so += 0.001;
+          return c;
+        },
         ctx.showToast,
         async (data) => {
           const { sort_order: _so, ...rest } = data;
@@ -199,8 +215,8 @@ export function CharacterDockPanel() {
             character={modalChar}
             roomId={ctx.roomId}
             currentUserId={ctx.user?.uid ?? ''}
-            onDuplicate={(data) => {
-              ctx.addCharacter({ ...data, owner_id: ctx.user?.uid ?? '' });
+            onDuplicate={async (data) => {
+              await ctx.addCharacter({ ...data, owner_id: ctx.user?.uid ?? '', sort_order: getInsertSortOrder() } as any);
               handleModalClose();
             }}
             onClose={handleModalClose}

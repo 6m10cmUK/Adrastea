@@ -17,7 +17,7 @@ export function useObjects(
   injectRef.current = inject;
   const { data: objectsData, loading: objectsLoading, setData: setObjectsData } = useSupabaseQuery<BoardObject>({
     table: 'objects',
-    columns: 'id,room_id,type,name,global,scene_ids,x,y,width,height,visible,opacity,sort_order,position_locked,size_locked,image_asset_id,background_color,image_fit,color_enabled,text_content,font_size,font_family,letter_spacing,line_height,auto_size,text_align,text_vertical_align,text_color,scale_x,scale_y,memo,created_at,updated_at',
+    columns: 'id,room_id,type,name,global,scene_ids,x,y,width,height,visible,opacity,sort_order,position_locked,size_locked,image_asset_id,background_color,image_fit,color_enabled,text_content,font_size,font_family,letter_spacing,line_height,auto_size,text_align,text_vertical_align,text_color,scale_x,scale_y,rotation,memo,created_at,updated_at',
     roomId,
     filter: (q) => q.eq('room_id', roomId),
     enabled: !inject && enabled !== false,
@@ -57,7 +57,13 @@ export function useObjects(
         x: data.x ?? 50, y: data.y ?? 50,
         width: data.width ?? 4, height: data.height ?? 4,
         visible: data.visible ?? true, opacity: data.opacity ?? 1,
-        sort_order: data.sort_order ?? (Math.max(0, ...allObjects.map(o => o.sort_order)) + 1),
+        sort_order: data.sort_order ?? (() => {
+          // デフォルト: 前景(1M)〜キャラクター(2M)の間の一番上
+          const LANDMARK_FG = 1_000_000;
+          const LANDMARK_CL = 2_000_000;
+          const between = allObjects.filter(o => o.sort_order > LANDMARK_FG && o.sort_order < LANDMARK_CL);
+          return between.length > 0 ? Math.max(...between.map(o => o.sort_order)) + 1 : LANDMARK_FG + 1;
+        })(),
         position_locked: data.position_locked ?? false,
         size_locked: data.size_locked ?? false,
         image_asset_id: data.image_asset_id ?? null,
@@ -71,6 +77,7 @@ export function useObjects(
         text_vertical_align: data.text_vertical_align ?? 'top',
         text_color: data.text_color ?? '#ffffff',
         scale_x: data.scale_x ?? 1, scale_y: data.scale_y ?? 1,
+        rotation: data.rotation ?? 0,
         memo: data.memo ?? '',
         created_at: now, updated_at: now,
       };

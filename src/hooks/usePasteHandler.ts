@@ -17,6 +17,8 @@ export interface UsePasteHandlerOptions {
   activeSceneId?: string | null;
   existingCharacterNames?: string[];
   existingScenarioTitles?: string[];
+  /** パネル固有のペーストハンドラ。設定されていればグローバルハンドラより優先 */
+  keyboardActionsRef?: React.MutableRefObject<{ paste?: () => void; [key: string]: any }>;
 }
 
 /**
@@ -140,7 +142,7 @@ export async function handleClipboardImport(
  * グローバル paste イベントを監視し、
  * クリップボード内容に応じてキャラクターインポートやトースト表示を行うフック
  */
-export function usePasteHandler({ addCharacter, addObject, addScene, addBgm, addScenarioText, showToast, updateObject, updateScene, allObjects, activeSceneId, existingCharacterNames, existingScenarioTitles }: UsePasteHandlerOptions): void {
+export function usePasteHandler({ addCharacter, addObject, addScene, addBgm, addScenarioText, showToast, updateObject, updateScene, allObjects, activeSceneId, existingCharacterNames, existingScenarioTitles, keyboardActionsRef }: UsePasteHandlerOptions): void {
   const handlePaste = useCallback(
     (e: ClipboardEvent) => {
       // テキスト入力中はスキップ（通常のペースト動作を妨げない）
@@ -153,6 +155,13 @@ export function usePasteHandler({ addCharacter, addObject, addScene, addBgm, add
         if (activeElement.contentEditable === 'true') {
           return;
         }
+      }
+
+      // パネル固有の paste ハンドラがあればそちらを優先
+      if (keyboardActionsRef?.current?.paste) {
+        e.preventDefault();
+        keyboardActionsRef.current.paste();
+        return;
       }
 
       const text = e.clipboardData?.getData('text/plain');
@@ -170,7 +179,7 @@ export function usePasteHandler({ addCharacter, addObject, addScene, addBgm, add
       // 非同期でインポート処理
       handleClipboardImport(text, addCharacter, showToast, addObject, addScene, addBgm, updateObject, allObjects, activeSceneId, addScenarioText, existingCharacterNames, existingScenarioTitles, updateScene);
     },
-    [addCharacter, addObject, addScene, addBgm, addScenarioText, showToast, updateObject, updateScene, allObjects, activeSceneId, existingCharacterNames, existingScenarioTitles],
+    [addCharacter, addObject, addScene, addBgm, addScenarioText, showToast, updateObject, updateScene, allObjects, activeSceneId, existingCharacterNames, existingScenarioTitles, keyboardActionsRef],
   );
 
   useEffect(() => {

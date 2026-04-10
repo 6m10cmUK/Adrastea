@@ -122,13 +122,22 @@ export function useLayerOperations() {
   // オブジェクト追加
   const handleAdd = useCallback(async (global: boolean, type: BoardObjectType, imageData?: { assetId?: string; width?: number; height?: number }) => {
     const center = getBoardCenter();
-    const nonBg = activeObjects.filter(o => o.type !== 'background');
+    // 前景(FG)とキャラクター(CL)の間にあるオブジェクト
+    const LANDMARK_FG = 1_000_000;
+    const LANDMARK_CL = 2_000_000;
+    const betweenFgCl = activeObjects.filter(o =>
+      o.type !== 'background' && o.type !== 'foreground' && o.type !== 'characters_layer'
+      && o.sort_order > LANDMARK_FG && o.sort_order < LANDMARK_CL
+    );
     let desired: number;
     if (editingObjectId) {
-      const selected = nonBg.find(o => o.id === editingObjectId);
-      desired = selected ? selected.sort_order + 1 : (nonBg.length > 0 ? nonBg[0].sort_order + 1 : 1);
+      const selected = activeObjects.find(o => o.id === editingObjectId && o.type !== 'background' && o.type !== 'foreground' && o.type !== 'characters_layer');
+      desired = selected ? selected.sort_order + 1 : LANDMARK_FG + 1;
     } else {
-      desired = nonBg.length > 0 ? nonBg[0].sort_order + 1 : 1;
+      // 前景とキャラの間の一番上（= sort_order が最大のもの + 1）
+      desired = betweenFgCl.length > 0
+        ? Math.max(...betweenFgCl.map(o => o.sort_order)) + 1
+        : LANDMARK_FG + 1;
     }
     const sortOrder = nextAvailableSort(desired, global);
 

@@ -44,6 +44,7 @@ function AdrasteaDemoRoom() {
     activeSceneId: ctx.activeScene?.id ?? null,
     existingCharacterNames: ctx.characters?.map(c => c.name),
     existingScenarioTitles: ctx.scenarioTexts?.map(t => t.title),
+    keyboardActionsRef: ctx.keyboardActionsRef,
   });
 
   return (

@@ -9,6 +9,7 @@ import { useCharacterContextMenu } from './useCharacterContextMenu';
 import { objectToClipboardJson } from '../utils/clipboardImport';
 import { ObjectLayerList } from './ObjectLayerList';
 import { CharacterLayerSection } from './CharacterLayerSection';
+import { useLayerOperations } from '../hooks/useLayerOperations';
 import { generateDuplicateName } from '../utils/nameUtils';
 
 export function LayerPanel({ onPaste }: { onPaste?: () => void }) {
@@ -26,7 +27,6 @@ export function LayerPanel({ onPaste }: { onPaste?: () => void }) {
     setEditingCharacter,
     addCharacter,
     setCharacterToOpenModal,
-    getBoardCenter,
     removeObject,
     keyboardActionsRef,
     members,
@@ -111,39 +111,17 @@ export function LayerPanel({ onPaste }: { onPaste?: () => void }) {
     setPendingImageAdd({ global });
   }, [canEditObject]);
 
+  const { handleAdd } = useLayerOperations();
+
   const handleImageSelected = useCallback((_url: string, _assetId?: string, _title?: string, w?: number, h?: number) => {
     if (!pendingImageAdd) return;
-    const center = getBoardCenter();
-    // sort_order は addObject 内で allObjects の max + 1 を自動計算させる
-
-    // 画像の比率からグリッド単位のサイズを算出
-    let width = 4;
-    let height = 4;
-    if (w && h) {
-      const maxGridSize = 10;
-      const aspect = w / h;
-      if (aspect >= 1) {
-        width = maxGridSize;
-        height = Math.max(1, Math.round(maxGridSize / aspect));
-      } else {
-        height = maxGridSize;
-        width = Math.max(1, Math.round(maxGridSize * aspect));
-      }
-    }
-
-    addObject({
-      type: 'panel' as BoardObjectType,
-      name: '新規オブジェクト',
-      x: center.x,
-      y: center.y,
-      width,
-      height,
-      global: pendingImageAdd.global,
-      scene_ids: pendingImageAdd.global ? [] : (activeScene?.id ? [activeScene.id] : []),
-      image_asset_id: _assetId ?? null,
+    handleAdd(pendingImageAdd.global, 'panel' as BoardObjectType, {
+      assetId: _assetId,
+      width: w,
+      height: h,
     });
     setPendingImageAdd(null);
-  }, [pendingImageAdd, activeObjects, activeScene, addObject, getBoardCenter]);
+  }, [pendingImageAdd, handleAdd]);
 
   const handleRemoveRequest = useCallback((msg: string, action: () => void) => {
     setPendingRemove({ msg, action });
