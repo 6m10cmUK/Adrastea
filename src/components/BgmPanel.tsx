@@ -143,6 +143,7 @@ function BgmTrackRow({
         onClick={(e) => onClick(track.id, e)}
         isSelected={isSelected}
         dataAttributes={{ 'data-track-id': track.id }}
+        layout="grid"
       >
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Top row: controls */}
@@ -534,6 +535,7 @@ export function BgmPanel() {
         title="BGM"
         subtitle={activeScene?.name}
         titleIcon={<Tooltip label="BGM"><Music size={14} /></Tooltip>}
+        layout="grid"
         onBackgroundClick={() => {
           setEditingBgmId(null);
           setPanelSelection(null);

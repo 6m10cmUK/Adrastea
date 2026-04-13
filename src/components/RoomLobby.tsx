@@ -395,10 +395,10 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ onRoomCreated }) => {
         dice_system: editDice,
         tags: editTags,
       });
-      setEditingRoom(null);
     } catch (err) {
       console.error('ルーム更新に失敗:', err);
     }
+    setEditingRoom(null);
   };
 
   // ── DnD ──
@@ -624,10 +624,10 @@ const RoomLobby: React.FC<RoomLobbyProps> = ({ onRoomCreated }) => {
         <AdModal
           title="ルームを編集"
           width="400px"
-          onClose={() => setEditingRoom(null)}
+          onClose={handleEditSave}
           footer={
             <>
-              <AdButton onClick={() => setEditingRoom(null)}>キャンセル</AdButton>
+              <AdButton onClick={handleEditSave}>閉じる</AdButton>
               <AdButton variant="primary" onClick={handleEditSave}>
                 保存
               </AdButton>

@@ -132,6 +132,7 @@ export function CharacterPanel({
       style={{ height: '100%' }}
     >
       <SortableListPanel
+      layout="grid"
       title="キャラクター"
       onBackgroundClick={() => onSelectedCharIdsChange([])}
       headerActions={
@@ -174,19 +175,14 @@ export function CharacterPanel({
         <SortableListItem
           key={char.id}
           id={char.id}
+          layout="grid"
           dataAttributes={{ 'data-char-id': char.id }}
           onClick={(e: React.MouseEvent) => handleRowClick(e, char)}
           onDoubleClick={() => onDoubleClickCharacter?.(char)}
           isSelected={selectedCharIds.includes(char.id)}
-            leadingSlot={
-              <div style={{
-                width: '3px',
-                alignSelf: 'stretch',
-                background: char.color || '#555555',
-                borderRadius: '1px',
-                flexShrink: 0,
-              }} />
-            }
+          itemStyle={{
+            borderLeft: `3px solid ${char.color || '#555555'}`,
+          }}
           >
             {/* アバター */}
             {char.images[char.active_image_index]?.asset_id && resolveAssetId(char.images[char.active_image_index].asset_id) ? (

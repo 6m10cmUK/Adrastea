@@ -15,6 +15,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  rectSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -33,6 +34,7 @@ interface SortableListPanelProps {
   onBackgroundClick?: () => void;
   onBackgroundContextMenu?: (e: React.MouseEvent) => void;
   emptyMessage?: string;
+  layout?: 'list' | 'grid';
   children: React.ReactNode;
 }
 
@@ -48,6 +50,7 @@ export function SortableListPanel({
   onBackgroundClick,
   onBackgroundContextMenu,
   emptyMessage,
+  layout = 'list',
   children,
 }: SortableListPanelProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -123,7 +126,19 @@ export function SortableListPanel({
       {/* List */}
       <div
         ref={containerRef}
-        style={{ flex: 1, overflowY: 'auto' }}
+        style={layout === 'grid' ? {
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+          gridAutoRows: 'min-content',
+          gap: '4px',
+          padding: '4px 8px',
+          alignContent: 'start',
+          overflowY: 'auto',
+        } : {
+          flex: 1,
+          overflowY: 'auto',
+        }}
         onClick={(e) => {
           if (!(e.target as HTMLElement).closest?.('[data-sortable-item]') && onBackgroundClick) {
             onBackgroundClick();
@@ -168,7 +183,7 @@ export function SortableListPanel({
             onDragEnd?.(event);
           }}
         >
-          <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={items.map(i => i.id)} strategy={layout === 'grid' ? rectSortingStrategy : verticalListSortingStrategy}>
             {children}
           </SortableContext>
           <DragOverlay dropAnimation={null}>
@@ -193,7 +208,7 @@ export function SortableListPanel({
           position: 'fixed',
           top: cursorPos.y - grabOffset.y,
           left: cursorPos.x - grabOffset.x,
-          width: containerRef.current?.offsetWidth ?? 240,
+          width: layout === 'grid' ? 220 : (containerRef.current?.offsetWidth ?? 240),
           zIndex: 9999,
           pointerEvents: 'none',
           opacity: 0.85,
@@ -229,6 +244,7 @@ interface SortableListItemProps {
   leadingSlot?: React.ReactNode;
   children: React.ReactNode;
   itemStyle?: React.CSSProperties;
+  layout?: 'list' | 'grid';
   dataAttributes?: Record<string, string>;
 }
 
@@ -243,6 +259,7 @@ export function SortableListItem({
   leadingSlot,
   children,
   itemStyle,
+  layout = 'list',
   dataAttributes,
 }: SortableListItemProps) {
   const {
@@ -257,7 +274,29 @@ export function SortableListItem({
   // attributes から aria-disabled を除外（DnD disabled ≠ インタラクション disabled）
   const { 'aria-disabled': _ariaDisabled, ...safeAttributes } = attributes;
 
-  const style: React.CSSProperties = {
+  const style: React.CSSProperties = layout === 'grid' ? {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '4px 8px',
+    fontSize: '12px',
+    color: theme.textPrimary,
+    background: isSelected ? theme.accentBgSubtle : theme.bgElevated,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '3px',
+    overflow: 'hidden',
+    minWidth: 0,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : isGroupDrag ? 0.4 : 1,
+    boxShadow: isDragging ? theme.shadowSm : undefined,
+    zIndex: isDragging ? 10 : undefined,
+    position: 'relative',
+    touchAction: 'none',
+    ...itemStyle,
+    // isSelected は itemStyle より優先
+    ...(isSelected ? { background: theme.accentBgSubtle } : {}),
+  } : {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',

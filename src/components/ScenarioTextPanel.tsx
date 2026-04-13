@@ -137,6 +137,7 @@ export function ScenarioTextPanel({
       >
         <SortableListPanel
           title="テキストメモ"
+          layout="grid"
           onBackgroundClick={() => onSelectIds([])}
           headerActions={
             <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
@@ -177,6 +178,7 @@ export function ScenarioTextPanel({
             <div key={text.id} data-text-id={text.id}>
               <SortableListItem
                 id={text.id}
+                layout="grid"
                 isSelected={selectedIds.includes(text.id)}
                 onClick={(e: React.MouseEvent) => handleItemClick(text.id, e)}
               >
