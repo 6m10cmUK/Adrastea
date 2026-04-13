@@ -74,7 +74,7 @@ const DEMO_OBJECTS: BoardObject[] = [
     text_content: null, font_size: 16, font_family: 'sans-serif',
     letter_spacing: 0, line_height: 1.2, auto_size: true,
     text_align: 'left', text_vertical_align: 'top', text_color: '#ffffff',
-    scale_x: 1, scale_y: 1, created_at: Date.now(), updated_at: Date.now(),
+    scale_x: 1, scale_y: 1, rotation: 0, created_at: Date.now(), updated_at: Date.now(),
   },
   {
     id: 'demo-obj-fg', room_id: 'demo-room-001', type: 'foreground', name: '前景',
@@ -85,7 +85,7 @@ const DEMO_OBJECTS: BoardObject[] = [
     text_content: null, font_size: 16, font_family: 'sans-serif',
     letter_spacing: 0, line_height: 1.2, auto_size: true,
     text_align: 'left', text_vertical_align: 'top', text_color: '#ffffff',
-    scale_x: 1, scale_y: 1, created_at: Date.now(), updated_at: Date.now(),
+    scale_x: 1, scale_y: 1, rotation: 0, created_at: Date.now(), updated_at: Date.now(),
   },
   {
     id: 'demo-obj-cl', room_id: 'demo-room-001', type: 'characters_layer', name: 'キャラクター',
@@ -96,7 +96,7 @@ const DEMO_OBJECTS: BoardObject[] = [
     text_content: null, font_size: 16, font_family: 'sans-serif',
     letter_spacing: 0, line_height: 1.5, auto_size: false,
     text_align: 'left', text_vertical_align: 'top', text_color: '#000000',
-    scale_x: 1, scale_y: 1, created_at: Date.now(), updated_at: Date.now(),
+    scale_x: 1, scale_y: 1, rotation: 0, created_at: Date.now(), updated_at: Date.now(),
   },
 ];
 

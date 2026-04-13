@@ -16,6 +16,10 @@ export function BoardDockPanel() {
     ctx.moveObject(id, { x, y });
   }, [ctx.moveObject]);
 
+  const handleRotateObject = useCallback((id: string, rotation: number) => {
+    ctx.moveObject(id, { rotation });
+  }, [ctx.moveObject]);
+
   const handleResizeObject = useCallback((id: string, width: number, height: number) => {
     const obj = ctx.activeObjects.find(o => o.id === id);
     if (obj?.type === 'text' && obj.auto_size && obj.width > 0 && obj.height > 0) {
@@ -138,6 +142,7 @@ export function BoardDockPanel() {
           onSelectObject={handleSelectObject}
           onEditObject={handleEditObject}
           onResizeObject={handleResizeObject}
+          onRotateObject={handleRotateObject}
           onSyncObjectSize={handleSyncObjectSize}
           selectedObjectId={ctx.editingObjectId}
           selectedObjectIds={ctx.selectedObjectIds}

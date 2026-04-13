@@ -26,6 +26,7 @@ interface BoardProps {
   onSelectObject?: (id: string) => void;
   onEditObject?: (id: string) => void;
   onResizeObject?: (id: string, width: number, height: number) => void;
+  onRotateObject?: (id: string, rotation: number) => void;
   onSyncObjectSize?: (id: string, width: number, height: number) => void;
   onUpdateCharacterBoardPosition?: (charId: string, x: number, y: number) => void;
   onSelectCharacter?: (charId: string) => void;
@@ -63,7 +64,7 @@ interface BgLayerData {
 }
 
 const BgLayer = memo(function BgLayer({ layer, duration }: { layer: BgLayerData; duration: number }) {
-  const blobSrc = useAnimatedBlobSrc(layer.url);
+  const { src: blobSrc, onError: handleBlobError } = useAnimatedBlobSrc(layer.url);
   const [visible, setVisible] = useState(layer.fadeOut || duration <= 0);
 
   // フェードアウト層: ref で opacity → 0
@@ -100,7 +101,7 @@ const BgLayer = memo(function BgLayer({ layer, duration }: { layer: BgLayerData;
       }}
     >
       {blobSrc && (
-        <img src={blobSrc} alt="" style={{
+        <img src={blobSrc} onError={handleBlobError} alt="" style={{
           width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block',
           filter: layer.blur ? 'blur(8px)' : 'none',
           transform: layer.blur ? 'scale(1.05)' : 'none',
@@ -181,7 +182,7 @@ export function getViewportCenter(stage: StageType | null): { x: number; y: numb
   };
 }
 
-export const Board = forwardRef<BoardHandle, BoardProps>(function Board({ objects = [], activeScene, gridVisible = true, onToggleGrid, characters, onMoveObject, onSelectObject, onEditObject, onResizeObject, onSyncObjectSize, onUpdateCharacterBoardPosition, onSelectCharacter, onDoubleClickCharacter, onPaste, onSelectBgObject, canEditObjects = true, canToggleGrid = true, onShowToast, onUndo, onRedo, canUndo, canRedo, currentUserId, selectedObjectId, selectedObjectIds, selectedCharacterId, children }, ref) {
+export const Board = forwardRef<BoardHandle, BoardProps>(function Board({ objects = [], activeScene, gridVisible = true, onToggleGrid, characters, onMoveObject, onSelectObject, onEditObject, onResizeObject, onRotateObject, onSyncObjectSize, onUpdateCharacterBoardPosition, onSelectCharacter, onDoubleClickCharacter, onPaste, onSelectBgObject, canEditObjects = true, canToggleGrid = true, onShowToast, onUndo, onRedo, canUndo, canRedo, currentUserId, selectedObjectId, selectedObjectIds, selectedCharacterId, children }, ref) {
   const stageRef = useRef<StageType>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
@@ -432,6 +433,7 @@ export const Board = forwardRef<BoardHandle, BoardProps>(function Board({ object
         onSelectObject={onSelectObject ?? (() => {})}
         onEditObject={onEditObject ?? (() => {})}
         onResizeObject={onResizeObject}
+        onRotateObject={onRotateObject}
         onSyncObjectSize={onSyncObjectSize}
         characters={characters}
         currentUserId={currentUserId}

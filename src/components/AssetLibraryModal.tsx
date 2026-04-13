@@ -11,8 +11,8 @@ import YouTube from 'react-youtube';
 
 /** blobCache 経由のサムネイル — キャッシュ済みなら即表示 */
 function CachedThumbnail({ src, alt, style }: { src: string; alt: string; style?: React.CSSProperties }) {
-  const blobSrc = useAnimatedBlobSrc(src);
-  return <img src={blobSrc ?? src} alt={alt} style={style} draggable={false} />;
+  const { src: blobSrc, onError: handleBlobError } = useAnimatedBlobSrc(src);
+  return <img src={blobSrc ?? src} alt={alt} onError={handleBlobError} style={style} draggable={false} />;
 }
 
 /** IntersectionObserver で可視領域に入ったときだけ中身を描画 */

@@ -29,6 +29,7 @@ interface CharacterStatsRow {
   on_board: boolean | null;
   board_x: number | null;
   board_y: number | null;
+  board_rotation: number | null;
   board_height: number | null;
   board_visible: boolean | null;
   created_at: number;
@@ -72,7 +73,7 @@ export function useCharacters(
 
   const statsQuery = useSupabaseQuery<CharacterStatsRow>({
     table: 'characters_stats',
-    columns: 'id,room_id,owner_id,name,color,active_image_index,statuses,parameters,is_hidden_on_board,sort_order,on_board,board_x,board_y,board_height,board_visible,created_at,updated_at',
+    columns: 'id,room_id,owner_id,name,color,active_image_index,statuses,parameters,is_hidden_on_board,sort_order,on_board,board_x,board_y,board_rotation,board_height,board_visible,created_at,updated_at',
     roomId,
     filter: (q) => q.eq('room_id', roomId),
     enabled: !inject && enabled !== false,
@@ -119,6 +120,7 @@ export function useCharacters(
         sort_order: stat.sort_order ?? 0,
         board_x: stat.board_x ?? 0,
         board_y: stat.board_y ?? 0,
+        board_rotation: stat.board_rotation ?? 0,
         board_visible: stat.board_visible ?? true,
         created_at: stat.created_at,
         updated_at: stat.updated_at,
@@ -503,7 +505,7 @@ export function useCharacters(
   );
 
   const moveCharacter = useCallback(
-    async (charId: string, updates: { board_x?: number; board_y?: number }): Promise<void> => {
+    async (charId: string, updates: { board_x?: number; board_y?: number; board_rotation?: number }): Promise<void> => {
       const inj = injectRef.current;
       if (inj) {
         await inj.move(charId, updates);

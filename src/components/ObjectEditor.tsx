@@ -41,6 +41,15 @@ function setDomStyle(objId: string | undefined, prop: string, valueMas: number) 
   }
 }
 
+function setDomRotation(objId: string | undefined, deg: number) {
+  if (!objId) return;
+  const el = document.querySelector(`[data-dom-obj-id="${objId}"]`) as HTMLElement | null;
+  if (el) {
+    el.style.transform = deg ? `rotate(${deg}deg)` : '';
+    el.style.transition = 'none';
+  }
+}
+
 export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _onSave }: ObjectEditorProps) {
   const ctx = useAdrasteaContext();
   const isGlobal = object?.global ?? false;
@@ -67,6 +76,7 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
       scale_y:            { debounce: true, defaultValue: 1 },
       memo:               { debounce: true, defaultValue: '' },
       opacity:            { debounce: true, defaultValue: 1 },
+      rotation:           { debounce: true, defaultValue: 0 },
 
       // immediate: トグル・選択（1回の操作 = 1回の書き込み）
       type:               { defaultValue: defaultType ?? 'panel' },
@@ -104,6 +114,7 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
         data.image_fit = s.image_fit;
         data.position_locked = s.position_locked;
         data.size_locked = s.size_locked;
+        data.rotation = s.rotation;
       } else if (type === 'text') {
         data.x = s.x;
         data.y = s.y;
@@ -124,6 +135,7 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
         data.size_locked = s.size_locked;
         data.scale_x = s.scale_x;
         data.scale_y = s.scale_y;
+        data.rotation = s.rotation;
       } else if (type === 'foreground') {
         data.image_asset_id = s.image_asset_id || null;
         data.color_enabled = s.color_enabled ?? false;
@@ -327,7 +339,7 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
                     value={state.width as number}
                     onChange={(v) => set('width', v)}
                     onDrag={(v) => { set('width', v, { localOnly: true }); setDomStyle(object?.id, 'width', v); }}
-                    min={1}
+                    min={0.01}
                     max={128}
                   />
                   <NumberDragInput
@@ -335,10 +347,21 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
                     value={state.height as number}
                     onChange={(v) => set('height', v)}
                     onDrag={(v) => { set('height', v, { localOnly: true }); setDomStyle(object?.id, 'height', v); }}
-                    min={1}
+                    min={0.01}
                     max={128}
                   />
                 </div>
+              </AdSection>
+              <AdSection label="回転">
+                <NumberDragInput
+                  label="°"
+                  value={state.rotation as number}
+                  onChange={(v) => set('rotation', ((Math.round(v) % 360) + 360) % 360)}
+                  onDrag={(v) => { const deg = ((Math.round(v) % 360) + 360) % 360; set('rotation', deg, { localOnly: true }); setDomRotation(object?.id, deg); }}
+                  step={45}
+                  shiftStep={0.5}
+                  dragScale={2}
+                />
               </AdSection>
               <AdSection label="ロック">
                 <AdCheckbox checked={state.position_locked as boolean} onChange={(v) => set('position_locked', v)} label="位置を固定" />
@@ -600,6 +623,17 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
                   </div>
                 )}
               </AdSection>
+              <AdSection label="回転">
+                <NumberDragInput
+                  label="°"
+                  value={state.rotation as number}
+                  onChange={(v) => set('rotation', ((Math.round(v) % 360) + 360) % 360)}
+                  onDrag={(v) => { const deg = ((Math.round(v) % 360) + 360) % 360; set('rotation', deg, { localOnly: true }); setDomRotation(object?.id, deg); }}
+                  step={45}
+                  shiftStep={0.5}
+                  dragScale={2}
+                />
+              </AdSection>
               <AdSection label="ロック">
                 <AdCheckbox checked={state.position_locked as boolean} onChange={(v) => set('position_locked', v)} label="位置を固定" />
                 <AdCheckbox checked={state.size_locked as boolean} onChange={(v) => set('size_locked', v)} label="サイズを固定" />
@@ -666,7 +700,7 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
                     value={ctx.activeScene?.foreground_width ?? 48}
                     onChange={(v) => fgSet('width', v)}
                     onDrag={(v) => { fgSet('width', v); setDomStyle(object?.id, 'width', v); }}
-                    min={1}
+                    min={0.01}
                     max={128}
                   />
                   <NumberDragInput
@@ -674,7 +708,7 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
                     value={ctx.activeScene?.foreground_height ?? 27}
                     onChange={(v) => fgSet('height', v)}
                     onDrag={(v) => { fgSet('height', v); setDomStyle(object?.id, 'height', v); }}
-                    min={1}
+                    min={0.01}
                     max={128}
                   />
                 </div>

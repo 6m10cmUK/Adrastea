@@ -10,6 +10,10 @@ interface NumberDragInputProps {
   min?: number;
   max?: number;
   step?: number;
+  /** Shift 押下時のステップ（省略時は step * 0.01） */
+  shiftStep?: number;
+  /** ドラッグ感度（1px あたりの変化量。省略時は step と同じ） */
+  dragScale?: number;
   /** ドラッグ範囲を現在値からの相対値で制限（例: 50 → 現在値 ±50） */
   relativeRange?: number;
   label?: string;
@@ -23,6 +27,8 @@ export function NumberDragInput({
   min,
   max,
   step = 1,
+  shiftStep,
+  dragScale,
   relativeRange,
   label,
   width = '52px',
@@ -61,10 +67,13 @@ export function NumberDragInput({
         if (Math.abs(dx) > 2) movedRef.current = true;
         if (movedRef.current) {
           const fine = moveEvent.shiftKey;
-          const effectiveStep = fine ? step * 0.01 : step;
+          const sensitivity = fine ? (shiftStep ?? step * 0.01) : (dragScale ?? step);
+          const snapStep = fine ? (shiftStep ?? step * 0.01) : step;
+          const raw = dragStartRef.current.startValue + dx * sensitivity;
+          // snapStep >= 1 のときは snapStep の倍数にスナップ（例: step=45 → 0, 45, 90...）
           let newValue = fine
-            ? Math.round((dragStartRef.current.startValue + dx * effectiveStep) * 100) / 100
-            : Math.round(dragStartRef.current.startValue + dx * effectiveStep);
+            ? Math.round(raw * 100) / 100
+            : (snapStep >= 1 ? Math.round(raw / snapStep) * snapStep : Math.round(raw));
           if (relativeRange !== undefined) {
             const lo = dragStartRef.current.startValue - relativeRange;
             const hi = dragStartRef.current.startValue + relativeRange;
