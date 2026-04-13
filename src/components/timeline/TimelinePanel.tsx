@@ -1,12 +1,15 @@
 import React, { useMemo, useCallback } from 'react';
-import type { Scene, BoardObject, BgmTrack } from '../../types/adrastea.types';
+import type { Scene, BoardObject, BoardObjectType, BgmTrack } from '../../types/adrastea.types';
 import { useAdrasteaContext } from '../../contexts/AdrasteaContext';
+import { resolveAssetId } from '../../hooks/useAssets';
 import { theme } from '../../styles/theme';
 import { TimelineHeader } from './TimelineHeader';
 import { TimelineBlock } from './TimelineBlock';
+import { useTimelineBlockDrag } from './useTimelineBlockDrag';
+import type { DragMode } from './useTimelineBlockDrag';
 
 // 定数
-const COLUMN_WIDTH = 80;    // px per scene
+const COLUMN_WIDTH = 136;   // px per scene
 const ROW_HEIGHT = 28;      // px per row
 const HEADER_HEIGHT = 32;   // px
 const LABEL_WIDTH = 40;     // px (トラック番号のみ)
@@ -20,6 +23,8 @@ interface TimelineTrack {
 interface TimelineBlockInfo {
   id: string;
   name: string;
+  imageUrl: string | null;
+  objectType?: BoardObjectType;
   startIdx: number;
   endIdx: number;
   rowIdx: number;
@@ -39,6 +44,8 @@ export const TimelinePanel: React.FC = () => {
     bgms,
     selectedObjectIds,
     setSelectedObjectIds,
+    updateObject,
+    updateBgm,
     activateScene,
     activeScene,
   } = useAdrasteaContext();
@@ -69,9 +76,12 @@ export const TimelinePanel: React.FC = () => {
     for (const obj of sortedObjects) {
       const rowIdx = sortOrderToTrackIdx.get(obj.sort_order)!;
       const { startIdx, endIdx } = getSceneRange(obj, sortedScenes);
+      const imageUrl = obj.image_asset_id ? resolveAssetId(obj.image_asset_id) : null;
       blockList.push({
         id: obj.id,
         name: obj.name,
+        imageUrl,
+        objectType: obj.type,
         startIdx,
         endIdx,
         rowIdx,
@@ -91,6 +101,7 @@ export const TimelinePanel: React.FC = () => {
       blockList.push({
         id: bgm.id,
         name: bgm.name,
+        imageUrl: null,
         startIdx,
         endIdx,
         rowIdx,
@@ -148,14 +159,68 @@ export const TimelinePanel: React.FC = () => {
   );
 
   /**
-   * ドラッグ開始
+   * ドラッグ: 移動完了時のコールバック
    */
-  const handleDragStart = useCallback(
-    (rowId: string, edge: 'start' | 'end', startX: number) => {
-      // TODO: useTimelineBlockDrag 統合時に実装
-      console.log('Drag start:', rowId, edge, startX);
+  const handleDragMove = useCallback(
+    async (blockId: string, newStartId: string | null, newEndId: string | null, newRowIdx: number | null) => {
+      // ブロックがOBJかBGMか判定
+      const obj = allObjects.find(o => o.id === blockId);
+      const bgm = bgms.find(b => b.id === blockId);
+
+      if (obj) {
+        const rangeUpdate: Partial<BoardObject> = {};
+        if (!obj.is_global) {
+          rangeUpdate.scene_start_id = newStartId;
+          rangeUpdate.scene_end_id = newEndId;
+        }
+        // 縦移動: sort_order をトラックの sort_order に変更
+        if (newRowIdx !== null) {
+          // トラックの sort_order を取得
+          const targetTrack = tracks[newRowIdx];
+          if (targetTrack) {
+            rangeUpdate.sort_order = targetTrack.sortOrder;
+          }
+        }
+        if (Object.keys(rangeUpdate).length > 0) {
+          await updateObject(blockId, rangeUpdate);
+        }
+      } else if (bgm) {
+        const rangeUpdate: Partial<BgmTrack> = {};
+        if (!bgm.is_global) {
+          rangeUpdate.scene_start_id = newStartId;
+          rangeUpdate.scene_end_id = newEndId;
+        }
+        if (Object.keys(rangeUpdate).length > 0) {
+          await updateBgm(blockId, rangeUpdate);
+        }
+      }
     },
-    []
+    [allObjects, bgms, tracks, updateObject, updateBgm]
+  );
+
+  const sortedScenes = useMemo(
+    () => [...scenes].sort((a, b) => a.position - b.position),
+    [scenes]
+  );
+
+  const { dragState, getDragPreview, handleDragStart: startDrag, handleMouseMove, handleMouseUp } = useTimelineBlockDrag(
+    COLUMN_WIDTH,
+    ROW_HEIGHT,
+    sortedScenes,
+    tracks.length,
+    handleDragMove,
+  );
+
+  /**
+   * ブロックからのドラッグ開始
+   */
+  const handleBlockDragStart = useCallback(
+    (blockId: string, mode: DragMode, startX: number, startY: number) => {
+      const block = blocks.find(b => b.id === blockId);
+      if (!block) return;
+      startDrag(blockId, mode, startX, startY, block.startIdx, block.endIdx, block.rowIdx);
+    },
+    [blocks, startDrag]
   );
 
   /**
@@ -322,28 +387,64 @@ export const TimelinePanel: React.FC = () => {
                 height: `${gridHeight}px`,
                 backgroundColor: theme.bgBase,
               }}
+              onMouseMove={(e) => handleMouseMove(e.clientX, e.clientY)}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
             >
               {/* グリッド線 */}
               {renderGrid()}
 
               {/* ブロック */}
-              {blocks.map((block) => (
-                <TimelineBlock
-                  key={block.id}
-                  rowId={block.id}
-                  name={block.name}
-                  startIdx={block.startIdx}
-                  endIdx={block.endIdx}
-                  rowIdx={block.rowIdx}
-                  columnWidth={COLUMN_WIDTH}
-                  rowHeight={ROW_HEIGHT}
-                  isSelected={selectedObjectIds.includes(block.id)}
-                  isGlobal={block.isGlobal}
-                  rowType={block.rowType}
-                  onSelect={handleBlockSelect}
-                  onDragStart={handleDragStart}
-                />
-              ))}
+              {blocks.map((block) => {
+                // ドラッグ中のブロックは元の位置に半透明で表示
+                const isDragging = dragState?.blockId === block.id;
+                return (
+                  <TimelineBlock
+                    key={block.id}
+                    rowId={block.id}
+                    name={block.name}
+                    imageUrl={block.imageUrl}
+                    objectType={block.objectType}
+                    startIdx={block.startIdx}
+                    endIdx={block.endIdx}
+                    rowIdx={block.rowIdx}
+                    columnWidth={COLUMN_WIDTH}
+                    rowHeight={ROW_HEIGHT}
+                    isSelected={selectedObjectIds.includes(block.id)}
+                    isGlobal={block.isGlobal}
+                    rowType={block.rowType}
+                    isDragPreview={isDragging}
+                    onSelect={handleBlockSelect}
+                    onDragStart={handleBlockDragStart}
+                  />
+                );
+              })}
+              {/* ドラッグプレビュー */}
+              {(() => {
+                const preview = getDragPreview();
+                if (!preview || !dragState) return null;
+                const block = blocks.find(b => b.id === dragState.blockId);
+                if (!block) return null;
+                return (
+                  <TimelineBlock
+                    key="drag-preview"
+                    rowId={dragState.blockId}
+                    name={block.name}
+                    imageUrl={block.imageUrl}
+                    objectType={block.objectType}
+                    startIdx={preview.startIdx}
+                    endIdx={preview.endIdx}
+                    rowIdx={preview.rowIdx}
+                    columnWidth={COLUMN_WIDTH}
+                    rowHeight={ROW_HEIGHT}
+                    isSelected={true}
+                    isGlobal={block.isGlobal}
+                    rowType={block.rowType}
+                    onSelect={() => {}}
+                    onDragStart={() => {}}
+                  />
+                );
+              })()}
             </div>
           </div>
         </div>

@@ -1,28 +1,42 @@
 import React, { useCallback } from 'react';
 import { theme } from '../../styles/theme';
+import type { BoardObjectType } from '../../types/adrastea.types';
+import type { DragMode } from './useTimelineBlockDrag';
+import {
+  Image, Type, Layers, Mountain,
+} from 'lucide-react';
+
+const TYPE_ICONS: Record<string, React.FC<{ size?: number }>> = {
+  panel: Image,
+  text: Type,
+  foreground: Mountain,
+  background: Mountain,
+  characters_layer: Layers,
+};
 
 export interface TimelineBlockProps {
   rowId: string;
   name: string;
-  startIdx: number;      // scenes配列での開始インデックス
-  endIdx: number;        // 終了インデックス（inclusive）
+  imageUrl?: string | null;
+  objectType?: BoardObjectType;
+  startIdx: number;
+  endIdx: number;
   rowIdx: number;
   columnWidth: number;
   rowHeight: number;
   isSelected: boolean;
-  isGlobal: boolean;     // ルームオブジェクト（全シーン占有）
+  isGlobal: boolean;
   rowType: 'object' | 'bgm';
+  isDragPreview?: boolean;
   onSelect: (id: string, multiselect: boolean) => void;
-  onDragStart: (rowId: string, edge: 'start' | 'end', startX: number) => void;
+  onDragStart: (blockId: string, mode: DragMode, startX: number, startY: number) => void;
 }
 
-/**
- * TimelineBlock
- * タイムライン上の1つのブロック（OBJ/BGMの連続区間表示）
- */
 export const TimelineBlock: React.FC<TimelineBlockProps> = ({
   rowId,
   name,
+  imageUrl,
+  objectType,
   startIdx,
   endIdx,
   rowIdx,
@@ -31,6 +45,7 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
   isSelected,
   isGlobal,
   rowType,
+  isDragPreview,
   onSelect,
   onDragStart,
 }) => {
@@ -38,41 +53,52 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
   const width = (endIdx - startIdx + 1) * columnWidth;
   const top = rowIdx * rowHeight;
 
-  // 背景色の決定
   const getBackgroundColor = () => {
+    if (isDragPreview) return 'rgba(100, 150, 255, 0.3)';
     if (isGlobal) {
-      // ルームオブジェクト: 薄い背景
       return rowType === 'object'
         ? 'rgba(var(--ad-accent-rgb-fallback, 200, 140, 255), 0.15)'
         : 'rgba(var(--ad-green-rgb-fallback, 100, 200, 100), 0.15)';
     }
-    // 通常: 濃い背景
-    return rowType === 'object'
-      ? theme.accent
-      : theme.green;
+    return rowType === 'object' ? theme.accent : theme.green;
   };
 
-  const handleBlockClick = useCallback(
+  const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      // ドラッグハンドルではないことを確認
-      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      // 左右端 6px 以外ならクリック扱い
-      if (clickX > 6 && clickX < rect.width - 6) {
-        onSelect(rowId, e.ctrlKey || e.metaKey);
-      }
+      if (isDragPreview) return;
+      onSelect(rowId, e.ctrlKey || e.metaKey);
     },
-    [rowId, onSelect]
+    [rowId, onSelect, isDragPreview]
   );
 
-  const handleMouseDown = useCallback(
-    (edge: 'start' | 'end') => (e: React.MouseEvent) => {
+  const handleCenterMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (isDragPreview) return;
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      if (relX <= 6 || relX >= rect.width - 6) return;
+      e.preventDefault();
+      onDragStart(rowId, 'move', e.clientX, e.clientY);
+    },
+    [rowId, onDragStart, isDragPreview]
+  );
+
+  const handleEdgeMouseDown = useCallback(
+    (mode: DragMode) => (e: React.MouseEvent) => {
+      if (isDragPreview) return;
       e.preventDefault();
       e.stopPropagation();
-      onDragStart(rowId, edge, e.clientX);
+      onDragStart(rowId, mode, e.clientX, e.clientY);
     },
-    [rowId, onDragStart]
+    [rowId, onDragStart, isDragPreview]
   );
+
+  const IconComponent = objectType ? TYPE_ICONS[objectType] ?? Image : null;
+  const iconBgColor = objectType === 'background' || objectType === 'foreground'
+    ? theme.bgInput
+    : objectType === 'characters_layer'
+      ? theme.accentBgSubtle
+      : 'transparent';
 
   return (
     <div
@@ -87,27 +113,49 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
           ? `2px solid ${theme.accentHighlight}`
           : `1px solid ${theme.borderSubtle}`,
         borderRadius: '2px',
-        padding: '2px',
-        cursor: 'pointer',
+        cursor: isDragPreview ? 'default' : 'grab',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        gap: '4px',
+        padding: '0 8px',
         overflow: 'hidden',
         boxSizing: 'border-box',
-        transition: 'all 0.1s ease-out',
+        opacity: isDragPreview ? 0.5 : 1,
+        pointerEvents: isDragPreview ? 'none' : 'auto',
+        zIndex: isDragPreview ? 10 : 1,
       }}
-      onClick={handleBlockClick}
+      onClick={handleClick}
+      onMouseDown={handleCenterMouseDown}
     >
-      {/* ブロック内の名前表示 */}
-      <div
+      {/* タイプアイコン */}
+      {IconComponent && (
+        <span style={{
+          flexShrink: 0, width: '16px', height: '16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '2px',
+          background: iconBgColor,
+        }}>
+          {React.createElement(IconComponent, { size: 10 })}
+        </span>
+      )}
+
+      {/* サムネイル */}
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt=""
+          style={{
+            flexShrink: 0, width: '18px', height: '18px',
+            objectFit: 'contain', objectPosition: 'center center',
+            borderRadius: '2px', border: `1px solid ${theme.border}`,
+          }}
+        />
+      )}
+
+      {/* 名前 */}
+      <span
         style={{
-          position: 'absolute',
-          left: '8px',
-          right: '8px',
-          top: 0,
-          bottom: 0,
-          display: 'flex',
-          alignItems: 'center',
+          flex: 1,
           fontSize: '10px',
           color: isGlobal ? theme.textMuted : theme.textOnAccent,
           whiteSpace: 'nowrap',
@@ -118,35 +166,37 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
         }}
       >
         {name}
-      </div>
+      </span>
 
-      {/* 左端ドラッグハンドル */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: '6px',
-          height: '100%',
-          cursor: 'col-resize',
-          backgroundColor: 'transparent',
-        }}
-        onMouseDown={handleMouseDown('start')}
-      />
+      {/* 左端リサイズハンドル */}
+      {!isDragPreview && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: '6px',
+            height: '100%',
+            cursor: 'col-resize',
+          }}
+          onMouseDown={handleEdgeMouseDown('resize-start')}
+        />
+      )}
 
-      {/* 右端ドラッグハンドル */}
-      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 0,
-          width: '6px',
-          height: '100%',
-          cursor: 'col-resize',
-          backgroundColor: 'transparent',
-        }}
-        onMouseDown={handleMouseDown('end')}
-      />
+      {/* 右端リサイズハンドル */}
+      {!isDragPreview && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            width: '6px',
+            height: '100%',
+            cursor: 'col-resize',
+          }}
+          onMouseDown={handleEdgeMouseDown('resize-end')}
+        />
+      )}
     </div>
   );
 };

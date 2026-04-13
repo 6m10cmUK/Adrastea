@@ -1,129 +1,147 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Scene } from '../../types/adrastea.types';
 
+export type DragMode = 'move' | 'resize-start' | 'resize-end';
+
 export interface DragState {
-  rowId: string;
-  edge: 'start' | 'end';
+  blockId: string;
+  mode: DragMode;
   startX: number;
+  startY: number;
   originalStartIdx: number;
   originalEndIdx: number;
+  originalRowIdx: number;
 }
 
-/**
- * useTimelineBlockDrag
- * ブロック端ドラッグで伸縮するカスタムhook。
- *
- * ドラッグ開始 → プレビュー更新 → 確定のフロー。
- * getDragPreview で現在のドラッグ予測位置を取得可能。
- */
+export interface DragPreview {
+  startIdx: number;
+  endIdx: number;
+  rowIdx: number;
+}
+
 export function useTimelineBlockDrag(
   columnWidth: number,
+  rowHeight: number,
   scenes: Scene[],
-  onUpdateRange: (rowId: string, newStartId: string | null, newEndId: string | null) => void
+  totalTracks: number,
+  onMove: (blockId: string, newStartId: string | null, newEndId: string | null, newSortOrder: number | null) => void,
 ): {
   dragState: DragState | null;
+  getDragPreview: () => DragPreview | null;
   handleDragStart: (
-    rowId: string,
-    edge: 'start' | 'end',
+    blockId: string,
+    mode: DragMode,
     startX: number,
+    startY: number,
     currentStartIdx: number,
-    currentEndIdx: number
+    currentEndIdx: number,
+    currentRowIdx: number,
   ) => void;
-  handleMouseMove: (clientX: number) => void;
+  handleMouseMove: (clientX: number, clientY: number) => void;
   handleMouseUp: () => void;
-  getDragPreview: () => { startIdx: number; endIdx: number } | null;
 } {
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const [currentDragDelta, setCurrentDragDelta] = useState(0);
+  const deltaRef = useRef({ dx: 0, dy: 0 });
+  const [, forceUpdate] = useState(0);
 
   const handleDragStart = useCallback(
     (
-      rowId: string,
-      edge: 'start' | 'end',
+      blockId: string,
+      mode: DragMode,
       startX: number,
+      startY: number,
       currentStartIdx: number,
-      currentEndIdx: number
+      currentEndIdx: number,
+      currentRowIdx: number,
     ) => {
       setDragState({
-        rowId,
-        edge,
+        blockId,
+        mode,
         startX,
+        startY,
         originalStartIdx: currentStartIdx,
         originalEndIdx: currentEndIdx,
+        originalRowIdx: currentRowIdx,
       });
-      setCurrentDragDelta(0);
+      deltaRef.current = { dx: 0, dy: 0 };
     },
     []
   );
 
   const handleMouseMove = useCallback(
-    (clientX: number) => {
+    (clientX: number, clientY: number) => {
       if (!dragState) return;
-
-      const deltaX = clientX - dragState.startX;
-      setCurrentDragDelta(deltaX);
+      deltaRef.current = {
+        dx: clientX - dragState.startX,
+        dy: clientY - dragState.startY,
+      };
+      forceUpdate(n => n + 1);
     },
     [dragState]
   );
 
-  const handleMouseUp = useCallback(() => {
-    if (!dragState) return;
-
-    const deltaIdx = Math.round(currentDragDelta / columnWidth);
-
-    let newStartIdx = dragState.originalStartIdx;
-    let newEndIdx = dragState.originalEndIdx;
-
-    if (dragState.edge === 'start') {
-      newStartIdx = Math.max(
-        0,
-        Math.min(dragState.originalStartIdx + deltaIdx, dragState.originalEndIdx)
-      );
-    } else {
-      newEndIdx = Math.min(
-        scenes.length - 1,
-        Math.max(dragState.originalEndIdx + deltaIdx, dragState.originalStartIdx)
-      );
-    }
-
-    // 確定: scene id を取得してコールバック
-    const newStartId = scenes[newStartIdx]?.id ?? null;
-    const newEndId = scenes[newEndIdx]?.id ?? null;
-
-    onUpdateRange(dragState.rowId, newStartId, newEndId);
-
-    setDragState(null);
-    setCurrentDragDelta(0);
-  }, [dragState, currentDragDelta, columnWidth, scenes, onUpdateRange]);
-
-  const getDragPreview = useCallback((): { startIdx: number; endIdx: number } | null => {
+  const calcPreview = useCallback((): DragPreview | null => {
     if (!dragState) return null;
 
-    const deltaIdx = Math.round(currentDragDelta / columnWidth);
+    const { dx, dy } = deltaRef.current;
+    const deltaCol = Math.round(dx / columnWidth);
+    const deltaRow = Math.round(dy / rowHeight);
 
     let startIdx = dragState.originalStartIdx;
     let endIdx = dragState.originalEndIdx;
+    let rowIdx = dragState.originalRowIdx;
 
-    if (dragState.edge === 'start') {
-      startIdx = Math.max(
-        0,
-        Math.min(dragState.originalStartIdx + deltaIdx, dragState.originalEndIdx)
-      );
-    } else {
-      endIdx = Math.min(
-        scenes.length - 1,
-        Math.max(dragState.originalEndIdx + deltaIdx, dragState.originalStartIdx)
-      );
+    switch (dragState.mode) {
+      case 'move': {
+        const blockLen = endIdx - startIdx;
+        startIdx = Math.max(0, Math.min(startIdx + deltaCol, scenes.length - 1 - blockLen));
+        endIdx = startIdx + blockLen;
+        rowIdx = Math.max(0, Math.min(rowIdx + deltaRow, totalTracks - 1));
+        break;
+      }
+      case 'resize-start': {
+        startIdx = Math.max(0, Math.min(startIdx + deltaCol, endIdx));
+        break;
+      }
+      case 'resize-end': {
+        endIdx = Math.min(scenes.length - 1, Math.max(endIdx + deltaCol, startIdx));
+        break;
+      }
     }
 
-    return { startIdx, endIdx };
-  }, [dragState, currentDragDelta, columnWidth, scenes.length]);
+    return { startIdx, endIdx, rowIdx };
+  }, [dragState, columnWidth, rowHeight, scenes.length, totalTracks]);
+
+  const getDragPreview = useCallback((): DragPreview | null => {
+    return calcPreview();
+  }, [calcPreview]);
+
+  const handleMouseUp = useCallback(() => {
+    if (!dragState) return;
+
+    const preview = calcPreview();
+    if (!preview) {
+      setDragState(null);
+      return;
+    }
+
+    const newStartId = scenes[preview.startIdx]?.id ?? null;
+    const newEndId = scenes[preview.endIdx]?.id ?? null;
+
+    // 縦移動があった場合は新しい sort_order を通知（null = 変更なし）
+    const newSortOrder = preview.rowIdx !== dragState.originalRowIdx ? preview.rowIdx : null;
+
+    onMove(dragState.blockId, newStartId, newEndId, newSortOrder);
+
+    setDragState(null);
+    deltaRef.current = { dx: 0, dy: 0 };
+  }, [dragState, calcPreview, scenes, onMove]);
 
   return {
     dragState,
+    getDragPreview,
     handleDragStart,
     handleMouseMove,
     handleMouseUp,
-    getDragPreview,
   };
 }
