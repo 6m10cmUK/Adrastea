@@ -58,7 +58,7 @@ const DEMO_SCENES: Scene[] = [
     foreground_y: -14,
     foreground_width: 48,
     foreground_height: 27,
-    sort_order: 0,
+    position: 0,
     created_at: Date.now(),
     updated_at: Date.now(),
   },
@@ -67,8 +67,8 @@ const DEMO_SCENES: Scene[] = [
 const DEMO_OBJECTS: BoardObject[] = [
   {
     id: 'demo-obj-bg', room_id: 'demo-room-001', type: 'background', name: '背景',
-    global: true, scene_ids: [], x: 0, y: 0, width: 0, height: 0,
-    visible: true, opacity: 1, sort_order: -1,
+    is_global: true, scene_start_id: null, scene_end_id: null, x: 0, y: 0, width: 0, height: 0,
+    visible: true, opacity: 1, sort_order: 0,
     position_locked: true, size_locked: true,
     image_asset_id: null, background_color: '#222222', color_enabled: false, image_fit: 'cover',
     text_content: null, font_size: 16, font_family: 'sans-serif',
@@ -78,8 +78,8 @@ const DEMO_OBJECTS: BoardObject[] = [
   },
   {
     id: 'demo-obj-fg', room_id: 'demo-room-001', type: 'foreground', name: '前景',
-    global: true, scene_ids: [], x: 0, y: 0, width: 0, height: 0,
-    visible: true, opacity: 1, sort_order: 1_000_000,
+    is_global: true, scene_start_id: null, scene_end_id: null, x: 0, y: 0, width: 0, height: 0,
+    visible: true, opacity: 1, sort_order: 1,
     position_locked: true, size_locked: true,
     image_asset_id: null, background_color: '#111111', color_enabled: false, image_fit: 'cover',
     text_content: null, font_size: 16, font_family: 'sans-serif',
@@ -89,8 +89,8 @@ const DEMO_OBJECTS: BoardObject[] = [
   },
   {
     id: 'demo-obj-cl', room_id: 'demo-room-001', type: 'characters_layer', name: 'キャラクター',
-    global: true, scene_ids: [], x: 0, y: 0, width: 0, height: 0,
-    visible: true, opacity: 1, sort_order: 2_000_000,
+    is_global: true, scene_start_id: null, scene_end_id: null, x: 0, y: 0, width: 0, height: 0,
+    visible: true, opacity: 1, sort_order: 2,
     position_locked: true, size_locked: true,
     image_asset_id: null, background_color: '#333333', color_enabled: false, image_fit: 'cover',
     text_content: null, font_size: 16, font_family: 'sans-serif',
@@ -135,7 +135,7 @@ export function useMockAdrasteaState() {
   const scenesReorder = useCallback(async (updates: { id: string; sort_order: number }[]) => {
     setScenes(p => {
       const map = new Map(updates.map(u => [u.id, u.sort_order]));
-      return p.map(s => map.has(s.id) ? { ...s, sort_order: map.get(s.id)! } : s);
+      return p.map(s => map.has(s.id) ? { ...s, position: map.get(s.id)! } : s);
     });
   }, []);
   const objectsCreateBatch = useCallback(async (objs: BoardObject[]) => {

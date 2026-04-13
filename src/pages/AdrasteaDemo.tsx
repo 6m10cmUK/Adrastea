@@ -34,7 +34,7 @@ function AdrasteaDemoRoom() {
     addCharacter: (data) => ctx.addCharacter({ ...data, owner_id: ctx.user?.uid ?? '' }),
     addObject: async (data) => {
       const { sort_order: _so, ...rest } = data;
-      return ctx.addObject({ ...rest, scene_ids: rest.global ? [] : (ctx.activeScene ? [ctx.activeScene.id] : []) });
+      return ctx.addObject({ ...rest, scene_start_id: rest.is_global ? null : (ctx.activeScene?.id ?? null), scene_end_id: rest.is_global ? null : (ctx.activeScene?.id ?? null) });
     },
     addScene: (data) => pasteSceneFromClipboard(data, ctx),
     addBgm: (data) => pasteBgmToScene(data, ctx.activeScene?.id ?? null, ctx),

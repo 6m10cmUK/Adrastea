@@ -56,13 +56,13 @@ export const MockAdrasteaProvider: React.FC<MockAdrasteaProviderProps> = ({
   // 各 hook を inject 付きで呼ぶ（characters_layer は useScenes 内で初回シーン作成時に自動生成）
   const {
     scenes,
-    addScene, updateScene, removeScene, reorderScenes,
+    addScene, updateScene, removeScene,
   } = useScenes(roomId, { inject: mock.scenesInject });
 
   const {
     allObjects, activeObjects,
     addObject, updateObject, removeObject, reorderObjects, batchUpdateSort,
-  } = useObjects(roomId, activeSceneId, { inject: mock.objectsInject });
+  } = useObjects(roomId, activeSceneId, scenes, { inject: mock.objectsInject });
 
   const {
     characters, layerOrderedCharacters,
@@ -267,7 +267,8 @@ export const MockAdrasteaProvider: React.FC<MockAdrasteaProviderProps> = ({
       y: center.y,
       width: 4,
       height: 4,
-      scene_ids: activeScene ? [activeScene.id] : [],
+      scene_start_id: activeScene?.id,
+      scene_end_id: activeScene?.id,
     });
   }, [addObject, getBoardCenter, activeScene]);
 
@@ -309,7 +310,7 @@ export const MockAdrasteaProvider: React.FC<MockAdrasteaProviderProps> = ({
     ],
 
     // Mutations: Scene
-    addScene, updateScene, removeScene, reorderScenes, activateScene,
+    addScene, updateScene, removeScene, activateScene,
 
     // Mutations: Object
     addObject, updateObject, moveObject, removeObject, reorderObjects, batchUpdateSort,

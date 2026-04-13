@@ -1,9 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAdrasteaContext } from '../contexts/AdrasteaContext';
 import { BgmTrackPlayer } from './BgmTrackPlayer';
-import type { BgmTrack } from '../types/adrastea.types';
+import type { BgmTrack, Scene } from '../types/adrastea.types';
 
 type PlaybackPatch = Pick<BgmTrack, 'is_playing' | 'is_paused'>;
+
+/** BGMがシーンで有効か判定するヘルパー */
+function isBgmActiveInScene(bgm: BgmTrack, sceneId: string, scenes: Scene[]): boolean {
+  if (bgm.is_global) return true;
+  if (!bgm.scene_start_id || !bgm.scene_end_id) return false;
+  const targetPos = scenes.find(s => s.id === sceneId)?.position;
+  const startPos = scenes.find(s => s.id === bgm.scene_start_id)?.position;
+  const endPos = scenes.find(s => s.id === bgm.scene_end_id)?.position;
+  if (targetPos === undefined || startPos === undefined || endPos === undefined) return false;
+  return startPos <= targetPos && targetPos <= endPos;
+}
 
 function playbackNeedsUpdate(track: BgmTrack, patch: PlaybackPatch): boolean {
   return (
@@ -13,7 +24,7 @@ function playbackNeedsUpdate(track: BgmTrack, patch: PlaybackPatch): boolean {
 }
 
 export function BgmEngine() {
-  const { bgms, updateBgm, activeScene, masterVolume, bgmMuted } = useAdrasteaContext();
+  const { bgms, updateBgm, activeScene, masterVolume, bgmMuted, scenes } = useAdrasteaContext();
 
   const debugLog = useCallback((_msg: string) => {
     // noop: デバッグログ無効化
@@ -49,7 +60,9 @@ export function BgmEngine() {
 
     const stopOrphanPlaying = () => {
       for (const t of bgmsRef.current) {
-        if (t.scene_ids.length === 0 && t.is_playing) {
+        // is_global=true のトラックや、シーン範囲が設定されていないトラックは対象外
+        // （アクティブシーンがない場合は、シーン範囲チェック不可なので再生中なら停止）
+        if (!currentSceneId && !t.is_global && t.is_playing) {
           updateBgmIfNeeded(t.id, { is_playing: false, is_paused: false });
         }
       }
@@ -67,11 +80,11 @@ export function BgmEngine() {
       const newFadeStates = new Map<string, 'none' | 'in' | 'out'>();
 
       const tracksToStop = currentBgms.filter(
-        (t) => t.is_playing && t.scene_ids.includes(prevSceneId) && !t.scene_ids.includes(currentSceneId)
+        (t) => t.is_playing && isBgmActiveInScene(t, prevSceneId, scenes) && !isBgmActiveInScene(t, currentSceneId, scenes)
       );
 
       const tracksToStart = currentBgms.filter(
-        (t) => !t.is_playing && t.auto_play_scene_ids.includes(currentSceneId)
+        (t) => !t.is_playing && t.auto_play && isBgmActiveInScene(t, currentSceneId, scenes)
       );
 
       const maxFadeInDuration = Math.max(
@@ -129,7 +142,7 @@ export function BgmEngine() {
     } else {
       // === 初回シーン読み込み ===
       const tracksToStart = currentBgms.filter(
-        (t) => !t.is_playing && t.auto_play_scene_ids.includes(currentSceneId)
+        (t) => !t.is_playing && t.auto_play && isBgmActiveInScene(t, currentSceneId, scenes)
       );
 
       tracksToStart.forEach((t) => {

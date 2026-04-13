@@ -15,8 +15,11 @@ export interface ScenesInject {
   create: (scene: Scene) => Promise<void>;
   update: (id: string, data: Partial<Scene>) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  reorder: (updates: { id: string; sort_order: number }[]) => Promise<void>;
   createObjectBatch: (objects: BoardObject[]) => Promise<void>;
+  removeObject?: (id: string) => Promise<void>;
+  updateObject?: (id: string, data: Partial<BoardObject>) => Promise<void>;
+  updateBgm?: (id: string, data: Partial<BgmTrack>) => Promise<void>;
+  removeBgm?: (id: string) => Promise<void>;
 }
 
 // ---- Objects Inject ----

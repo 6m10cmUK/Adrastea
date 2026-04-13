@@ -6,20 +6,15 @@ import { FadeInIcon } from './ui/FadeInIcon';
 
 interface BgmEditorProps {
   track: BgmTrack;
-  activeSceneId: string | null;
   onUpdate: (id: string, data: Partial<BgmTrack>) => void;
   onClose: () => void;
 }
 
-export function BgmEditor({ track, activeSceneId, onUpdate, onClose }: BgmEditorProps) {
-  const isAutoPlay = activeSceneId ? track.auto_play_scene_ids.includes(activeSceneId) : false;
+export function BgmEditor({ track, onUpdate, onClose }: BgmEditorProps) {
+  const isAutoPlay = track.auto_play;
 
   const handleAutoPlayToggle = (checked: boolean) => {
-    if (!activeSceneId) return;
-    const next = checked
-      ? [...track.auto_play_scene_ids, activeSceneId]
-      : track.auto_play_scene_ids.filter(id => id !== activeSceneId);
-    onUpdate(track.id, { auto_play_scene_ids: next });
+    onUpdate(track.id, { auto_play: checked });
   };
 
   return (

@@ -325,7 +325,7 @@ const DomObjectWrapper = memo(function DomObjectWrapper({
         ctx.showToast,
         async (data) => {
           const { sort_order: _so, ...rest } = data;
-          return ctx.addObject({ ...rest, scene_ids: rest.global ? [] : (ctx.activeScene ? [ctx.activeScene.id] : []) });
+          return ctx.addObject({ ...rest, scene_ids: rest.is_global ? [] : (ctx.activeScene ? [ctx.activeScene.id] : []) });
         },
         undefined,
         undefined,
@@ -1838,7 +1838,8 @@ export const DomObjectOverlay = memo(forwardRef<HTMLDivElement, DomObjectOverlay
             const { sort_order: _so, ...rest } = data;
             return ctx.addObject({
               ...rest,
-              scene_ids: ctx.activeScene ? [ctx.activeScene.id] : [],
+              scene_start_id: ctx.activeScene?.id ?? null,
+              scene_end_id: ctx.activeScene?.id ?? null,
             });
           },
           undefined,

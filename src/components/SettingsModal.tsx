@@ -65,6 +65,7 @@ const PANEL_DEFS: PanelDef[] = [
   { id: 'bgm', component: 'bgm', title: 'BGM', permission: 'panel_bgm' },
   { id: 'scenarioText', component: 'scenarioText', title: 'テキストメモ', permission: 'panel_scenarioText' },
   { id: 'cutin', component: 'cutin', title: 'カットイン (開発中)', permission: 'panel_cutin', disabled: true },
+  { id: 'timeline', component: 'timeline', title: 'タイムライン', permission: 'panel_timeline' },
 ];
 
 const NAV_ITEMS: Array<{ key: SettingsSection; label: string }> = [
@@ -363,7 +364,7 @@ function LayoutSection({
     ['panel_board', 'panel_character', 'panel_chat', 'panel_status', 'panel_property', 'panel_pdfViewer'].includes(p.permission)
   );
   const subOwnerPanels = PANEL_DEFS.filter((p) =>
-    ['panel_scene', 'panel_layer', 'panel_bgm', 'panel_scenarioText', 'panel_cutin'].includes(p.permission)
+    ['panel_scene', 'panel_layer', 'panel_bgm', 'panel_scenarioText', 'panel_cutin', 'panel_timeline'].includes(p.permission)
   );
 
   const sectionHeaderStyle = {

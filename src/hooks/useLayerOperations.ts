@@ -2,13 +2,16 @@ import { useCallback } from 'react';
 import { useThrottledCallback } from './useThrottledUpdate';
 import { useAdrasteaContext } from '../contexts/AdrasteaContext';
 import type { BoardObject, BoardObjectType } from '../types/adrastea.types';
+import { isObjectActiveInScene } from './useObjects';
 import { generateDuplicateName } from '../utils/nameUtils';
 
 export function useLayerOperations() {
   const {
     activeObjects,
     allObjects,
+    scenes,
     addObject,
+    batchUpdateSort,
     updateObject,
     removeObject,
     selectedObjectIds,
@@ -27,14 +30,6 @@ export function useLayerOperations() {
     showToast,
   } = useAdrasteaContext();
 
-  /** 指定値以上で衝突しない sort_order を返す。global なら 1000 の倍数に切り上げる */
-  const nextAvailableSort = useCallback((desired: number, global: boolean): number => {
-    const used = new Set(allObjects.map(o => o.sort_order));
-    let v = global ? Math.ceil(desired / 1000) * 1000 : desired;
-    if (v === 0 && global) v = 1000; // 0 は避ける
-    while (used.has(v)) v += global ? 1000 : 1;
-    return v;
-  }, [allObjects]);
 
   // 削除可能なIDリスト（複数選択時は対象全体、単一時はそのIDのみ）
   const getDeletableIds = useCallback((triggerObjId: string): string[] => {
@@ -122,24 +117,52 @@ export function useLayerOperations() {
   // オブジェクト追加
   const handleAdd = useCallback(async (global: boolean, type: BoardObjectType, imageData?: { assetId?: string; width?: number; height?: number }) => {
     const center = getBoardCenter();
-    // 前景(FG)とキャラクター(CL)の間にあるオブジェクト
-    const LANDMARK_FG = 1_000_000;
-    const LANDMARK_CL = 2_000_000;
-    const betweenFgCl = activeObjects.filter(o =>
-      o.type !== 'background' && o.type !== 'foreground' && o.type !== 'characters_layer'
-      && o.sort_order > LANDMARK_FG && o.sort_order < LANDMARK_CL
-    );
-    let desired: number;
-    if (editingObjectId) {
-      const selected = activeObjects.find(o => o.id === editingObjectId && o.type !== 'background' && o.type !== 'foreground' && o.type !== 'characters_layer');
-      desired = selected ? selected.sort_order + 1 : LANDMARK_FG + 1;
+
+    // 空きトラック検索: アクティブシーンで OBJ が居ない sort_order を探す
+    // ただし BG/FG/CL のトラック、is_global OBJ のトラックは使えない
+    const findVacantTrack = (): number | null => {
+      if (global || !activeScene) return null; // ルームOBJは常に新トラック
+      const allSortOrders = new Set(allObjects.map(o => o.sort_order));
+      for (const sortOrder of allSortOrders) {
+        // BG/FG/CL のトラックはスキップ
+        const occupants = allObjects.filter(o => o.sort_order === sortOrder);
+        if (occupants.some(o => o.type === 'background' || o.type === 'foreground' || o.type === 'characters_layer')) continue;
+        // is_global OBJ がいるトラックはスキップ
+        if (occupants.some(o => o.is_global)) continue;
+        // アクティブシーンで OBJ が居ないか確認
+        const hasObjInScene = occupants.some(o => isObjectActiveInScene(o, activeScene.id, scenes));
+        if (!hasObjInScene) return sortOrder;
+      }
+      return null;
+    };
+
+    let sortOrder: number;
+    const vacantTrack = findVacantTrack();
+    if (vacantTrack !== null) {
+      sortOrder = vacantTrack;
     } else {
-      // 前景とキャラの間の一番上（= sort_order が最大のもの + 1）
-      desired = betweenFgCl.length > 0
-        ? Math.max(...betweenFgCl.map(o => o.sort_order)) + 1
-        : LANDMARK_FG + 1;
+      // 空きトラックなし → 新トラック作成
+      // 挿入位置を決定し、それ以降の sort_order を +1 シフト
+      const cl = allObjects.find(o => o.type === 'characters_layer');
+      const fg = allObjects.find(o => o.type === 'foreground');
+      let insertAt: number;
+      if (editingObjectId) {
+        const selected = activeObjects.find(o => o.id === editingObjectId && o.type !== 'background' && o.type !== 'foreground' && o.type !== 'characters_layer');
+        insertAt = selected ? selected.sort_order + 1 : (cl ? cl.sort_order : (fg ? fg.sort_order + 1 : 1));
+      } else {
+        // CL の直下に挿入
+        insertAt = cl ? cl.sort_order : (fg ? fg.sort_order + 1 : 1);
+      }
+      // insertAt 以降の既存 OBJ の sort_order を +1 シフト
+      const toShift = allObjects
+        .filter(o => o.sort_order >= insertAt)
+        .sort((a, b) => b.sort_order - a.sort_order); // 降順でシフト（衝突回避）
+      if (toShift.length > 0) {
+        const shiftUpdates = toShift.map(o => ({ id: o.id, sort: o.sort_order + 1 }));
+        await batchUpdateSort(shiftUpdates);
+      }
+      sortOrder = insertAt;
     }
-    const sortOrder = nextAvailableSort(desired, global);
 
     // 画像の比率からグリッド単位のサイズを算出
     let width = 4;
@@ -164,8 +187,9 @@ export function useLayerOperations() {
       width,
       height,
       sort_order: sortOrder,
-      global,
-      scene_ids: global ? [] : (activeScene?.id ? [activeScene.id] : []),
+      is_global: global,
+      scene_start_id: global ? null : (activeScene?.id ?? null),
+      scene_end_id: global ? null : (activeScene?.id ?? null),
       ...(imageData?.assetId ? { image_asset_id: imageData.assetId } : {}),
     });
     if (newObjId) {
@@ -173,7 +197,7 @@ export function useLayerOperations() {
       setEditingObjectId(newObjId);
       showToast(type === 'text' ? 'テキストを追加しました' : 'オブジェクトを追加しました', 'success');
     }
-  }, [activeObjects, editingObjectId, getBoardCenter, activeScene, addObject, setSelectedObjectIds, setEditingObjectId, showToast]);
+  }, [activeObjects, allObjects, scenes, editingObjectId, getBoardCenter, activeScene, addObject, batchUpdateSort, setSelectedObjectIds, setEditingObjectId, showToast]);
 
   // キャラクター削除確認用（複製と同じく確認メッセージを返す）
   const handleRemoveCharacter = useCallback((charId: string) => {

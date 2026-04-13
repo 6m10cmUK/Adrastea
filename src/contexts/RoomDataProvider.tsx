@@ -116,7 +116,6 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
     addScene,
     updateScene,
     removeScene,
-    reorderScenes,
     activateScene,
   } = useScenes(roomId, {
     onObjectsCreated: (objs) => objectsCreatedRef.current?.(objs),
@@ -174,7 +173,7 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
     removeObject,
     reorderObjects,
     batchUpdateSort,
-  } = useObjects(roomId, effectiveSceneId, {
+  } = useObjects(roomId, effectiveSceneId, scenes, {
     initialData: initialRoomData?.objects,
     enabled: rpcReady,
   });
@@ -338,15 +337,16 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
           await addObject({
             type: 'characters_layer',
             name: 'キャラクター',
-            global: true,
-            scene_ids: [],
+            is_global: true,
+            scene_start_id: undefined,
+            scene_end_id: undefined,
             x: 0,
             y: 0,
             width: 0,
             height: 0,
             visible: true,
             opacity: 1,
-            sort_order: 9999,
+            sort_order: 2,
             position_locked: true,
             size_locked: true,
             image_asset_id: null,
@@ -388,9 +388,11 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
     if (bgmCleanupDoneRef.current || !allLoaded || scenes.length === 0) return;
     bgmCleanupDoneRef.current = true;
     const sceneIdSet = new Set(scenes.map(s => s.id));
-    const orphans = bgms.filter(b =>
-      b.scene_ids.length === 0 || b.scene_ids.every(sid => !sceneIdSet.has(sid))
-    );
+    const orphans = bgms.filter(b => {
+      if (b.is_global) return false;
+      if (!b.scene_start_id || !b.scene_end_id) return true;
+      return !sceneIdSet.has(b.scene_start_id) || !sceneIdSet.has(b.scene_end_id);
+    });
     if (orphans.length > 0) {
       (async () => {
         await Promise.all(orphans.map(b => removeBgm(b.id)));
@@ -402,9 +404,11 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
   useEffect(() => {
     if (!bgmCleanupDoneRef.current) return;
     const sceneIdSet = new Set(scenes.map(s => s.id));
-    const orphans = bgms.filter(b =>
-      b.scene_ids.length === 0 || b.scene_ids.every(sid => !sceneIdSet.has(sid))
-    );
+    const orphans = bgms.filter(b => {
+      if (b.is_global) return false;
+      if (!b.scene_start_id || !b.scene_end_id) return true;
+      return !sceneIdSet.has(b.scene_start_id) || !sceneIdSet.has(b.scene_end_id);
+    });
     if (orphans.length > 0) {
       (async () => {
         await Promise.all(orphans.map(b => removeBgm(b.id)));
@@ -498,7 +502,6 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
   const guardedAddScene = withPermission('scene_edit', addScene);
   const guardedUpdateScene = withPermission('scene_edit', updateScene);
   const guardedRemoveScene = withPermission('scene_edit', removeScene);
-  const guardedReorderScenes = withPermission('scene_edit', reorderScenes);
   const guardedActivateScene = withPermission('scene_edit', activateScene);
   const guardedAddObject = withPermission('object_edit', addObject);
   // updateObject をラップ: fg/bg の image_asset_id 変更時にシーンのサムネイル asset_id を同期
@@ -508,7 +511,7 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
       if ('image_asset_id' in updates) {
         const obj = allObjects.find(o => o.id === id);
         if (obj && (obj.type === 'foreground' || obj.type === 'background')) {
-          const sceneId = obj.scene_ids[0];
+          const sceneId = obj.scene_start_id;
           if (sceneId) {
             const field = obj.type === 'foreground' ? 'foreground_asset_id' : 'background_asset_id';
             updateScene(sceneId, { [field]: updates.image_asset_id ?? null });
@@ -559,7 +562,6 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
       addScene: guardedAddScene,
       updateScene: guardedUpdateScene,
       removeScene: guardedRemoveScene,
-      reorderScenes: guardedReorderScenes,
       activateScene: guardedActivateScene,
 
       // Characters
@@ -636,7 +638,6 @@ export const RoomDataProvider: React.FC<RoomDataProviderProps> = ({
       guardedAddScene,
       guardedUpdateScene,
       guardedRemoveScene,
-      guardedReorderScenes,
       activateScene,
       characters,
       layerOrderedCharacters,

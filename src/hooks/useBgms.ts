@@ -36,7 +36,7 @@ export function useBgms(roomId: string, options?: { inject?: BgmsInject; initial
 
   const bgmsQuery = useSupabaseQuery<BgmTrack>({
     table: 'bgms',
-    columns: 'id,room_id,name,bgm_type,bgm_source,bgm_asset_id,bgm_volume,bgm_loop,scene_ids,is_playing,is_paused,auto_play_scene_ids,fade_in,fade_in_duration,fade_out,fade_duration,sort_order,created_at,updated_at',
+    columns: 'id,room_id,name,bgm_type,bgm_source,bgm_asset_id,bgm_volume,bgm_loop,is_global,scene_start_id,scene_end_id,is_playing,is_paused,auto_play,fade_in,fade_in_duration,fade_out,fade_duration,sort_order,created_at,updated_at',
     roomId,
     filter: (q) => q.eq('room_id', roomId),
     orderBy: { column: 'sort_order', ascending: true },
@@ -99,10 +99,12 @@ export function useBgms(roomId: string, options?: { inject?: BgmsInject; initial
         bgm_source: b.bgm_source ?? null,
         bgm_volume: b.bgm_volume,
         bgm_loop: b.bgm_loop,
-        scene_ids: b.scene_ids,
+        is_global: b.is_global ?? false,
+        scene_start_id: b.scene_start_id ?? null,
+        scene_end_id: b.scene_end_id ?? null,
         is_playing: override ? override.is_playing : b.is_playing,
         is_paused: override ? override.is_paused : b.is_paused,
-        auto_play_scene_ids: b.auto_play_scene_ids ?? [],
+        auto_play: b.auto_play ?? false,
         fade_in: b.fade_in ?? true,
         fade_in_duration: b.fade_in_duration ?? 500,
         sort_order: b.sort_order ?? 0,
@@ -130,10 +132,12 @@ export function useBgms(roomId: string, options?: { inject?: BgmsInject; initial
         bgm_source: data.bgm_source ?? null,
         bgm_volume: data.bgm_volume ?? 0.5,
         bgm_loop: data.bgm_loop ?? true,
-        scene_ids: data.scene_ids ?? [],
+        is_global: data.is_global ?? false,
+        scene_start_id: data.scene_start_id ?? null,
+        scene_end_id: data.scene_end_id ?? null,
         is_playing: data.is_playing ?? false,
         is_paused: data.is_paused ?? false,
-        auto_play_scene_ids: data.auto_play_scene_ids ?? [],
+        auto_play: data.auto_play ?? false,
         fade_in: data.fade_in ?? true,
         fade_in_duration: data.fade_in_duration ?? 500,
         sort_order: data.sort_order ?? bgms.length,
@@ -203,10 +207,6 @@ export function useBgms(roomId: string, options?: { inject?: BgmsInject; initial
       const inj = injectRef.current;
       if (inj) {
         await inj.update(id, updates);
-        const merged = { ...(bgms.find((b) => b.id === id) ?? {}), ...updates };
-        if ((merged as BgmTrack).scene_ids?.length === 0) {
-          await inj.remove(id);
-        }
         return;
       }
 
@@ -224,40 +224,16 @@ export function useBgms(roomId: string, options?: { inject?: BgmsInject; initial
 
         const rest = omitKeys(updates as BgmTrack, ['id', 'created_at', 'updated_at']);
         await bgmsMutation.update(id, { ...rest, updated_at: Date.now() } as Partial<BgmTrack>);
-        const merged = { ...(bgms.find((b) => b.id === id) ?? {}), ...updates };
-        if ((merged as BgmTrack).scene_ids?.length === 0) {
-          await bgmsMutation.remove(id);
-          removeFromLocalStorageOrder(id);
-        }
       } catch (error) {
         console.error('[useBgms] updateBgm failed:', error);
       }
     },
-    [bgms, removeFromLocalStorageOrder, setPlaybackOverride, bgmsMutation, schedulePlaybackWrite, flushPendingPlaybackWrite]
+    [bgms, setPlaybackOverride, bgmsMutation, schedulePlaybackWrite, flushPendingPlaybackWrite]
   );
 
   const removeBgm = useCallback(
-    async (id: string, activeSceneId?: string | null): Promise<void> => {
+    async (id: string): Promise<void> => {
       const inj = injectRef.current;
-      const bgm = bgms.find(b => b.id === id);
-
-      // アクティブシーンが指定されていて、他シーンにも紐づいている場合は scene_ids から除去するだけ
-      if (activeSceneId && bgm && bgm.scene_ids.includes(activeSceneId) && bgm.scene_ids.length > 1) {
-        const newSceneIds = bgm.scene_ids.filter(s => s !== activeSceneId);
-        const newAutoPlay = bgm.auto_play_scene_ids.filter(s => s !== activeSceneId);
-        if (inj) {
-          await inj.update(id, { scene_ids: newSceneIds, auto_play_scene_ids: newAutoPlay });
-        } else {
-          try {
-            await bgmsMutation.update(id, { scene_ids: newSceneIds, auto_play_scene_ids: newAutoPlay, updated_at: Date.now() } as Partial<BgmTrack>);
-          } catch (error) {
-            console.error('[useBgms] removeBgm (unlink scene) failed:', error);
-          }
-        }
-        return;
-      }
-
-      // 1シーンのみ or シーン未指定 → 完全削除
       if (inj) {
         await inj.remove(id);
       } else {
@@ -269,7 +245,7 @@ export function useBgms(roomId: string, options?: { inject?: BgmsInject; initial
         }
       }
     },
-    [bgms, removeFromLocalStorageOrder, bgmsMutation]
+    [removeFromLocalStorageOrder, bgmsMutation]
   );
 
   const reorderBgms = useCallback(

@@ -14,6 +14,7 @@ import { BgmDockPanel } from './BgmDockPanel';
 import { DebugConsoleDockPanel } from './DebugConsoleDockPanel';
 import { ChatPaletteDockPanel } from './ChatPaletteDockPanel';
 import { StatusDockPanel } from './StatusDockPanel';
+import { TimelineDockPanel } from './TimelineDockPanel';
 
 export const panelComponents: Record<string, React.FC> = {
   board: BoardDockPanel,
@@ -30,4 +31,5 @@ export const panelComponents: Record<string, React.FC> = {
   bgm: BgmDockPanel,
   debugConsole: DebugConsoleDockPanel,
   status: StatusDockPanel,
+  timeline: TimelineDockPanel,
 };

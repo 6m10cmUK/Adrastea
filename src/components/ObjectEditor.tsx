@@ -52,7 +52,7 @@ function setDomRotation(objId: string | undefined, deg: number) {
 
 export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _onSave }: ObjectEditorProps) {
   const ctx = useAdrasteaContext();
-  const isGlobal = object?.global ?? false;
+  const isGlobal = object?.is_global ?? false;
   const isNew = object === null;
 
   const { state, set } = useEntityEditor({
@@ -90,7 +90,7 @@ export function ObjectEditor({ object, defaultType, roomId: _roomId, onSave: _on
       auto_size:          { immediate: true, defaultValue: true },
       text_align:         { immediate: true, defaultValue: 'left' },
       text_vertical_align: { immediate: true, defaultValue: 'top' },
-      global:             { defaultValue: false },
+      is_global:          { defaultValue: false },
     },
     onDebounceSave: (key, data) => ctx.setPendingEdit(key, data as any),
     onImmediateUpdate: (id, data) => (ctx as any).updateObject(id, data),

@@ -1,10 +1,27 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { useSupabaseQuery, useSupabaseMutation } from './useSupabaseQuery';
-import type { Scene, BoardObject } from '../types/adrastea.types';
+import type { Scene, BoardObject, BgmTrack } from '../types/adrastea.types';
 import type { ScenesInject } from '../types/adrastea-persistence';
 import { genId } from '../utils/id';
 import { omitKeys } from '../utils/object';
+
+// ---- Clipboard ----
+interface SceneClipboard {
+  sceneData: Partial<Omit<Scene, 'id' | 'room_id' | 'position' | 'created_at' | 'updated_at'>>;
+  type: 'copy' | 'cut';
+}
+
+// ---- Helper Functions ----
+function isObjectInScene(obj: BoardObject, sceneId: string, scenes: Scene[]): boolean {
+  if (obj.is_global) return true;
+  if (!obj.scene_start_id || !obj.scene_end_id) return false;
+  const targetPos = scenes.find(s => s.id === sceneId)?.position;
+  const startPos = scenes.find(s => s.id === obj.scene_start_id)?.position;
+  const endPos = scenes.find(s => s.id === obj.scene_end_id)?.position;
+  if (targetPos === undefined || startPos === undefined || endPos === undefined) return false;
+  return startPos <= targetPos && targetPos <= endPos;
+}
 
 export type OnObjectsCreated = (objects: BoardObject[]) => void;
 
@@ -26,7 +43,7 @@ export function useScenes(
 
   const { data: scenesData, loading: scenesLoading, setData: setScenesData } = useSupabaseQuery<Scene>({
     table: 'scenes',
-    columns: 'id,room_id,name,background_asset_id,foreground_asset_id,foreground_opacity,bg_transition,bg_transition_duration,fg_transition,fg_transition_duration,bg_blur,bg_color_enabled,bg_color,fg_color_enabled,fg_color,foreground_x,foreground_y,foreground_width,foreground_height,grid_visible,sort_order,created_at,updated_at',
+    columns: 'id,room_id,name,background_asset_id,foreground_asset_id,foreground_opacity,bg_transition,bg_transition_duration,fg_transition,fg_transition_duration,bg_blur,bg_color_enabled,bg_color,fg_color_enabled,fg_color,foreground_x,foreground_y,foreground_width,foreground_height,grid_visible,position,created_at,updated_at',
     roomId,
     filter: (q) => q.eq('room_id', roomId),
     enabled: !inject && enabled !== false,
@@ -39,20 +56,27 @@ export function useScenes(
   const scenes: Scene[] = useMemo(
     () => {
       const data = inject ? inject.data : (scenesData ?? []);
-      return [...data].sort((a, b) => a.sort_order - b.sort_order);
+      return [...data].sort((a, b) => a.position - b.position);
     },
     [inject, scenesData]
   );
 
+  // Clipboard state
+  const [sceneClipboard, setSceneClipboard] = useState<SceneClipboard | null>(null);
+
   const addScene = useCallback(
     async (
       data: Partial<Omit<Scene, 'id' | 'room_id'>>,
-      duplicateFromSceneId?: string,
-      allObjects?: BoardObject[]
+      options?: { insertIndex?: number; duplicateFromSceneId?: string; allObjects?: BoardObject[]; allBgms?: BgmTrack[] }
     ) => {
       const inj = injectRef.current;
+      const { insertIndex, duplicateFromSceneId, allObjects } = options ?? {};
       const id = genId();
       const now = Date.now();
+
+      // Determine position
+      const position = data.position ?? insertIndex ?? scenes.length;
+
       const newScene: Scene = {
         id,
         room_id: roomId,
@@ -74,16 +98,16 @@ export function useScenes(
         fg_color_enabled: data.fg_color_enabled ?? false,
         fg_color: data.fg_color ?? '#666666',
         grid_visible: data.grid_visible ?? false,
-        sort_order: data.sort_order ?? scenes.length,
+        position,
         created_at: now,
         updated_at: now,
       };
 
-      // 複製時: シーンオブジェクト（panel/text）を sort_order ごと複製
+      // 複製時: シーンオブジェクト（panel/text）を複製
       const createdObjects: BoardObject[] = [];
       if (duplicateFromSceneId && allObjects) {
         const sourceObjects = allObjects.filter(
-          (o) => !o.global && o.scene_ids.includes(duplicateFromSceneId)
+          (o) => isObjectInScene(o, duplicateFromSceneId, scenes)
             && o.type !== 'background' && o.type !== 'foreground' && o.type !== 'characters_layer'
         );
         for (const obj of sourceObjects) {
@@ -91,7 +115,9 @@ export function useScenes(
             ...obj,
             id: genId(),
             room_id: roomId,
-            scene_ids: [id],
+            is_global: false,
+            scene_start_id: id,
+            scene_end_id: id,
             sort_order: obj.sort_order,
             created_at: now,
             updated_at: now,
@@ -102,6 +128,13 @@ export function useScenes(
 
       if (inj) {
         await inj.create(newScene);
+        if (insertIndex !== undefined) {
+          // Shift position for scenes after insertIndex
+          const scenesToShift = scenes.filter(s => s.position >= insertIndex);
+          for (const scene of scenesToShift) {
+            await inj.update(scene.id, { position: scene.position + 1 });
+          }
+        }
         if (createdObjects.length > 0) {
           await inj.createObjectBatch(createdObjects);
           onObjectsCreated?.(createdObjects);
@@ -109,6 +142,21 @@ export function useScenes(
       } else {
         try {
           await scenesMutation.insert(newScene);
+
+          // Shift position for scenes after insertIndex
+          if (insertIndex !== undefined) {
+            const scenesToShift = scenes.filter(s => s.position >= insertIndex);
+            for (const scene of scenesToShift) {
+              const { error } = await supabase
+                .from('scenes')
+                .update({ position: scene.position + 1, updated_at: Date.now() })
+                .eq('id', scene.id);
+              if (error) {
+                console.error('[useScenes] addScene position shift failed:', error);
+                throw error;
+              }
+            }
+          }
 
           if (createdObjects.length > 0) {
             const { error: objectError } = await supabase.from('objects').insert(createdObjects);
@@ -124,9 +172,9 @@ export function useScenes(
         }
       }
 
-      return { scene: newScene, objects: [] };
+      return { scene: newScene, objects: createdObjects };
     },
-    [roomId, scenes.length, onObjectsCreated, scenesMutation]
+    [roomId, scenes, onObjectsCreated, scenesMutation]
     // ← inject は injectRef 経由なので deps に入れない
   );
 
@@ -148,19 +196,108 @@ export function useScenes(
   );
 
   const removeScene = useCallback(
-    async (sceneId: string) => {
+    async (sceneId: string, allObjects?: BoardObject[], allBgms?: BgmTrack[]) => {
       const inj = injectRef.current;
+      const sceneToRemove = scenes.find(s => s.id === sceneId);
+      if (!sceneToRemove) return;
+
+      const scenePos = sceneToRemove.position;
+      const nextScene = scenes.find(s => s.position === scenePos + 1);
+      const prevScene = scenes.find(s => s.position === scenePos - 1);
+
       if (inj) {
+        // Adjust objects and BGMs
+        if (allObjects) {
+          for (const obj of allObjects) {
+            if (obj.is_global) continue;
+            if (obj.scene_start_id === sceneId && obj.scene_end_id === sceneId) {
+              await inj.removeObject?.(obj.id);
+            } else if (obj.scene_start_id === sceneId && nextScene) {
+              await inj.updateObject?.(obj.id, { scene_start_id: nextScene.id });
+            } else if (obj.scene_end_id === sceneId && prevScene) {
+              await inj.updateObject?.(obj.id, { scene_end_id: prevScene.id });
+            }
+          }
+        }
+        if (allBgms) {
+          for (const bgm of allBgms) {
+            if (bgm.scene_start_id === sceneId && bgm.scene_end_id === sceneId) {
+              await inj.removeBgm?.(bgm.id);
+            } else if (bgm.scene_start_id === sceneId && nextScene) {
+              await inj.updateBgm?.(bgm.id, { scene_start_id: nextScene.id });
+            } else if (bgm.scene_end_id === sceneId && prevScene) {
+              await inj.updateBgm?.(bgm.id, { scene_end_id: prevScene.id });
+            }
+          }
+        }
+        // Remove scene
         await inj.remove(sceneId);
+        // Shift position for scenes after removed scene
+        const scenesToShift = scenes.filter(s => s.position > scenePos);
+        for (const scene of scenesToShift) {
+          await inj.update(scene.id, { position: scene.position - 1 });
+        }
       } else {
         try {
+          // Adjust objects and BGMs
+          if (allObjects) {
+            for (const obj of allObjects) {
+              if (obj.is_global) continue;
+              if (obj.scene_start_id === sceneId && obj.scene_end_id === sceneId) {
+                const { error } = await supabase.from('objects').delete().eq('id', obj.id);
+                if (error) console.error('[useScenes] removeScene object delete failed:', error);
+              } else if (obj.scene_start_id === sceneId && nextScene) {
+                const { error } = await supabase
+                  .from('objects')
+                  .update({ scene_start_id: nextScene.id, updated_at: Date.now() })
+                  .eq('id', obj.id);
+                if (error) console.error('[useScenes] removeScene object update failed:', error);
+              } else if (obj.scene_end_id === sceneId && prevScene) {
+                const { error } = await supabase
+                  .from('objects')
+                  .update({ scene_end_id: prevScene.id, updated_at: Date.now() })
+                  .eq('id', obj.id);
+                if (error) console.error('[useScenes] removeScene object update failed:', error);
+              }
+            }
+          }
+          if (allBgms) {
+            for (const bgm of allBgms) {
+              if (bgm.scene_start_id === sceneId && bgm.scene_end_id === sceneId) {
+                const { error } = await supabase.from('bgms').delete().eq('id', bgm.id);
+                if (error) console.error('[useScenes] removeScene bgm delete failed:', error);
+              } else if (bgm.scene_start_id === sceneId && nextScene) {
+                const { error } = await supabase
+                  .from('bgms')
+                  .update({ scene_start_id: nextScene.id, updated_at: Date.now() })
+                  .eq('id', bgm.id);
+                if (error) console.error('[useScenes] removeScene bgm update failed:', error);
+              } else if (bgm.scene_end_id === sceneId && prevScene) {
+                const { error } = await supabase
+                  .from('bgms')
+                  .update({ scene_end_id: prevScene.id, updated_at: Date.now() })
+                  .eq('id', bgm.id);
+                if (error) console.error('[useScenes] removeScene bgm update failed:', error);
+              }
+            }
+          }
+          // Remove scene
           await scenesMutation.remove(sceneId);
+          // Shift position for scenes after removed scene
+          const scenesToShift = scenes.filter(s => s.position > scenePos);
+          for (const scene of scenesToShift) {
+            const { error } = await supabase
+              .from('scenes')
+              .update({ position: scene.position - 1, updated_at: Date.now() })
+              .eq('id', scene.id);
+            if (error) console.error('[useScenes] removeScene position shift failed:', error);
+          }
         } catch (error) {
           console.error('[useScenes] removeScene failed:', error);
         }
       }
     },
-    [scenesMutation]
+    [scenes, scenesMutation]
   );
 
   const activateScene = useCallback(
@@ -173,23 +310,39 @@ export function useScenes(
     []
   );
 
-  const reorderScenes = useCallback(
-    async (orderedIds: string[]) => {
-      const inj = injectRef.current;
-      const updates = orderedIds.map((id, i) => ({ id, sort_order: i }));
-      if (inj) {
-        await inj.reorder(updates);
-      } else {
-        try {
-          await scenesMutation.reorder(orderedIds);
-        } catch (error) {
-          console.error('[useScenes] reorderScenes failed:', error);
-          throw error;
-        }
-      }
+  // Clipboard operations
+  const copyScene = useCallback(
+    (sceneId: string) => {
+      const scene = scenes.find(s => s.id === sceneId);
+      if (!scene) return;
+      const sceneData = omitKeys(scene, ['id', 'room_id', 'position', 'created_at', 'updated_at']);
+      setSceneClipboard({ sceneData, type: 'copy' });
     },
-    [scenesMutation]
+    [scenes]
   );
 
-  return { scenes, loading, addScene, updateScene, removeScene, reorderScenes, activateScene };
+  const cutScene = useCallback(
+    async (sceneId: string, allObjects?: BoardObject[], allBgms?: BgmTrack[]) => {
+      const scene = scenes.find(s => s.id === sceneId);
+      if (!scene) return;
+      const sceneData = omitKeys(scene, ['id', 'room_id', 'position', 'created_at', 'updated_at']);
+      setSceneClipboard({ sceneData, type: 'cut' });
+      await removeScene(sceneId, allObjects, allBgms);
+    },
+    [scenes, removeScene]
+  );
+
+  const pasteScene = useCallback(
+    async (insertIndex: number, allObjects?: BoardObject[], allBgms?: BgmTrack[]) => {
+      if (!sceneClipboard) return;
+      const result = await addScene(sceneClipboard.sceneData, { insertIndex, allObjects, allBgms });
+      if (sceneClipboard.type === 'cut') {
+        setSceneClipboard(null);
+      }
+      return result;
+    },
+    [sceneClipboard, addScene]
+  );
+
+  return { scenes, loading, addScene, updateScene, removeScene, activateScene, sceneClipboard, copyScene, cutScene, pasteScene };
 }

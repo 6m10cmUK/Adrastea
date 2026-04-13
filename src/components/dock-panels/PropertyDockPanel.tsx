@@ -179,7 +179,6 @@ export function PropertyDockPanel() {
         <BgmEditor
           key={track.id}
           track={track}
-          activeSceneId={ctx.activeScene?.id ?? null}
           onUpdate={ctx.updateBgm}
           onClose={() => ctx.setEditingBgmId(null)}
         />

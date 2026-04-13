@@ -39,6 +39,7 @@ export const PERMISSION_MIN_ROLE = {
   panel_bgm: 'sub_owner',
   panel_cutin: 'sub_owner',
   panel_layer: 'sub_owner',
+  panel_timeline: 'sub_owner',
   panel_property: 'user',
   panel_debug: 'owner',
 

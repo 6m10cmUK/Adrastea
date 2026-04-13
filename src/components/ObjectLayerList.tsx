@@ -21,11 +21,6 @@ import { useObjectContextMenu } from './useObjectContextMenu';
 import { useLayerOperations } from '../hooks/useLayerOperations';
 import { isLayerSortDebug } from '../utils/debugFlags';
 
-// ランドマーク sort_order（固定値）
-// ルームオブジェクトは 1000 刻み、シーンオブジェクトはその間に 1 刻み（各区間 999 個）
-const LANDMARK_BG = -1;
-const LANDMARK_FG = 1_000_000;
-const LANDMARK_CL = 2_000_000;
 
 const TYPE_ICON_COMPONENTS: Record<BoardObjectType, React.FC<{ size?: number }>> = {
   panel: ({ size = 14 }) => <Image size={size} />,
@@ -165,16 +160,11 @@ export function ObjectLayerList({
 
     rest.splice(insertIdx, 0, ...draggedItems);
 
-    // ランドマーク間の区間ごとに sort_order を振り直す
+    // 連番で sort_order を振り直す
     const bg = sortedObjects.find(o => o.type === 'background');
 
     const updates: { id: string; sort: number }[] = [];
     const overrideMap = new Map<string, number>();
-
-    // background は常に LANDMARK_BG（ランドマークは RPC に送らない、ローカルオーバーライドのみ）
-    if (bg) {
-      overrideMap.set(bg.id, LANDMARK_BG);
-    }
 
     if (isLayerSortDebug()) {
       console.log('[LayerSortDebug] dragEnd 新しい順序（降順: 先頭=前面）', {
@@ -185,51 +175,29 @@ export function ObjectLayerList({
     // rest を昇順に反転（index 0 = 最背面）
     const ascending = [...rest].reverse();
 
-    // ランドマーク（bg/fg/cl）は固定。
-    // ルームオブジェクトは 1000 刻みで再配置。
-    // シーンオブジェクトはルームオブジェクト間に 1 刻みで配置。
-    // ascending は昇順（index 0 = 最背面）。
-
-    // Step 1: ランドマーク位置を記録し、ランドマーク間の区間に分割
-    const ROOM_OBJ_SPACING = 1000;
-    type AscItem = { o: typeof ascending[number]; isLandmark: boolean; isRoom: boolean };
-    const items: AscItem[] = ascending.map(o => ({
-      o,
-      isLandmark: o.type === 'background' || o.type === 'foreground' || o.type === 'characters_layer',
-      isRoom: o.global && o.type !== 'background' && o.type !== 'foreground' && o.type !== 'characters_layer',
-    }));
-
-    // Step 2: ランドマーク区間ごとに処理
-    let cursor = LANDMARK_BG; // 区間の開始点
-    let roomCounter = 0; // 区間内のルームオブジェクトカウンタ
-    let sceneCounter = 0; // ルームオブジェクト間のシーンオブジェクトカウンタ
-
-    for (const item of items) {
-      if (item.isLandmark) {
-        const lmSort = item.o.type === 'background' ? LANDMARK_BG
-          : item.o.type === 'foreground' ? LANDMARK_FG
-          : LANDMARK_CL;
-        overrideMap.set(item.o.id, lmSort);
-        cursor = lmSort;
-        roomCounter = 0;
-        sceneCounter = 0;
-        continue;
+    // FG < CL の制約チェック
+    const fgIdx = ascending.findIndex(o => o.type === 'foreground');
+    const clIdx = ascending.findIndex(o => o.type === 'characters_layer');
+    if (fgIdx >= 0 && clIdx >= 0 && fgIdx > clIdx) {
+      // FG が CL より上に来てしまう場合は操作を拒否
+      if (isLayerSortDebug()) {
+        console.log('[LayerSortDebug] dragEnd 拒否: FG < CL 制約違反', { fgIdx, clIdx });
       }
-      if (item.isRoom) {
-        // ルームオブジェクト: 1000 刻み
-        roomCounter++;
-        sceneCounter = 0;
-        const newOrder = cursor + roomCounter * ROOM_OBJ_SPACING;
-        overrideMap.set(item.o.id, newOrder);
-        if (item.o.sort_order !== newOrder) updates.push({ id: item.o.id, sort: newOrder });
-        continue;
+      return;
+    }
+
+    // sort_order を連番で振り直し（BG=0、rest は 1 から）
+    if (bg) {
+      overrideMap.set(bg.id, 0);
+      if (bg.sort_order !== 0) updates.push({ id: bg.id, sort: 0 });
+    }
+
+    for (let i = 0; i < ascending.length; i++) {
+      const newOrder = i + 1;  // BG が 0 なので 1 から
+      overrideMap.set(ascending[i].id, newOrder);
+      if (ascending[i].sort_order !== newOrder) {
+        updates.push({ id: ascending[i].id, sort: newOrder });
       }
-      // シーンオブジェクト: 前のルームオブジェクト（or ランドマーク）の直後に 1 刻み
-      sceneCounter++;
-      const base = cursor + roomCounter * ROOM_OBJ_SPACING;
-      const newOrder = base + sceneCounter;
-      overrideMap.set(item.o.id, newOrder);
-      if (item.o.sort_order !== newOrder) updates.push({ id: item.o.id, sort: newOrder });
     }
 
     if (isLayerSortDebug()) {
@@ -480,7 +448,7 @@ export function ObjectLayerList({
           && selectedObjectIds.includes(activeDragId)
           && isSelected
           && obj.id !== activeDragId;
-        const iconBgColor = obj.global ? 'rgba(166,227,161,0.2)' : theme.accentHighlight;
+        const iconBgColor = obj.is_global ? 'rgba(166,227,161,0.2)' : theme.accentHighlight;
 
         // characters_layer の位置にキャラクターセクションを描画（DnDドロップターゲットとして機能させる）
         if (obj.type === 'characters_layer') {

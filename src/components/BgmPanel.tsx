@@ -6,7 +6,7 @@ import { theme } from '../styles/theme';
 import { SortableListPanel, SortableListItem, ConfirmModal, Tooltip } from './ui';
 import { DropdownMenu, shortcutLabel } from './ui/DropdownMenu';
 import { FadeInIcon } from './ui/FadeInIcon';
-import type { BgmTrack } from '../types/adrastea.types';
+import type { BgmTrack, Scene } from '../types/adrastea.types';
 import {
   Trash2, Plus, Music,
   Volume2, VolumeX, Repeat, Zap,
@@ -14,6 +14,17 @@ import {
 import { AssetLibraryModal } from './AssetLibraryModal';
 import { bgmToClipboardJson, parseClipboardData, pasteBgmToScene } from '../utils/clipboardImport';
 import { calcInsertSortOrder } from '../utils/sortOrder';
+
+/** BGMがシーンで有効か判定するヘルパー */
+function isBgmActiveInScene(bgm: BgmTrack, sceneId: string, scenes: Scene[]): boolean {
+  if (bgm.is_global) return true;
+  if (!bgm.scene_start_id || !bgm.scene_end_id) return false;
+  const targetPos = scenes.find(s => s.id === sceneId)?.position;
+  const startPos = scenes.find(s => s.id === bgm.scene_start_id)?.position;
+  const endPos = scenes.find(s => s.id === bgm.scene_end_id)?.position;
+  if (targetPos === undefined || startPos === undefined || endPos === undefined) return false;
+  return startPos <= targetPos && targetPos <= endPos;
+}
 
 const extractVideoId = (url: string): string => {
   const match = url.match(/(?:youtu\.be\/|v=)([^&\s]+)/);
@@ -99,7 +110,6 @@ function VolumeFader({ value, onChange }: { value: number; onChange: (v: number)
 // --- BgmTrackRow ---
 interface BgmTrackRowProps {
   track: BgmTrack;
-  currentSceneId: string;
   isSelected: boolean;
   onClick: (id: string, e: React.MouseEvent) => void;
   onUpdate: (id: string, data: Partial<BgmTrack>) => void;
@@ -112,7 +122,7 @@ interface BgmTrackRowProps {
 }
 
 function BgmTrackRow({
-  track, currentSceneId, isSelected, onClick, onUpdate, onContextMenu,
+  track, isSelected, onClick, onUpdate, onContextMenu,
   renamingId, renameValue, onRenameChange, onRenameSubmit, onRenameCancel,
 }: BgmTrackRowProps) {
   const [localMuted, setLocalMuted] = useState(false);
@@ -129,7 +139,7 @@ function BgmTrackRow({
 
   const effectiveVolume = localMuted ? 0 : track.bgm_volume;
 
-  const isAutoPlay = currentSceneId ? track.auto_play_scene_ids.includes(currentSceneId) : false;
+  const isAutoPlay = track.auto_play;
   const trackTooltip = [
     `シーン切替時自動再生: ${isAutoPlay ? 'オン' : 'オフ'}`,
     `ループ再生: ${track.bgm_loop ? 'オン' : 'オフ'}`,
@@ -219,15 +229,9 @@ function BgmTrackRow({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (!currentSceneId) return;
-                const isAuto = track.auto_play_scene_ids.includes(currentSceneId);
-                onUpdate(track.id, {
-                  auto_play_scene_ids: isAuto
-                    ? track.auto_play_scene_ids.filter(id => id !== currentSceneId)
-                    : [...track.auto_play_scene_ids, currentSceneId],
-                });
+                onUpdate(track.id, { auto_play: !track.auto_play });
               }}
-              style={{ ...iconBtn, color: currentSceneId && track.auto_play_scene_ids.includes(currentSceneId) ? theme.accent : theme.textMuted, opacity: currentSceneId && track.auto_play_scene_ids.includes(currentSceneId) ? 1 : 0.3 }}
+              style={{ ...iconBtn, color: track.auto_play ? theme.accent : theme.textMuted, opacity: track.auto_play ? 1 : 0.3 }}
             >
               <Zap size={13} />
             </button>
@@ -288,7 +292,7 @@ function BgmTrackRow({
 
 // --- BgmPanel ---
 export function BgmPanel() {
-  const { bgms, addBgm, updateBgm, removeBgm, reorderBgms, activeScene, setEditingBgmId, clearAllEditing, showToast, panelSelection, setPanelSelection, keyboardActionsRef } = useAdrasteaContext();
+  const { bgms, addBgm, updateBgm, removeBgm, reorderBgms, activeScene, setEditingBgmId, clearAllEditing, showToast, panelSelection, setPanelSelection, keyboardActionsRef, scenes } = useAdrasteaContext();
   const { can } = usePermission();
   const canManageBgm = can('bgm_manage');
 
@@ -296,8 +300,8 @@ export function BgmPanel() {
   const currentSceneId = activeScene?.id ?? '';
   // bgms は useLocalStorageOrder + DB sort_order で既にルーム全体の順序が付いている。ここでは絞り込みのみ（再ソートしない）
   const filteredBgms = useMemo(
-    () => bgms.filter(b => b.scene_ids.includes(currentSceneId)),
-    [bgms, currentSceneId]
+    () => bgms.filter(b => b.is_global || (currentSceneId && isBgmActiveInScene(b, currentSceneId, scenes)) || b.is_playing),
+    [bgms, currentSceneId, scenes]
   );
 
   // ローカルstate で楽観的UI更新
@@ -487,13 +491,15 @@ export function BgmPanel() {
     const isYoutube = videoId !== normalizedUrl;
     const source = isYoutube ? videoId : normalizedUrl;
 
-    // 同じソースの既存トラックがあれば scene_ids に追加するだけ
+    // 同じソースの既存トラックがあれば scene_start_id/scene_end_id に追加するだけ
     const existing = bgms.find(b => b.bgm_source === source);
     if (existing) {
-      if (!existing.scene_ids.includes(activeScene.id)) {
+      if (!isBgmActiveInScene(existing, activeScene.id, scenes)) {
+        // 既存トラックをシーン範囲に追加（scene_start_id か scene_end_id が未設定なら、このシーンを端点に設定）
+        const scenePos = activeScene.position;
         updateBgm(existing.id, {
-          scene_ids: [...existing.scene_ids, activeScene.id],
-          auto_play_scene_ids: [...existing.auto_play_scene_ids, activeScene.id],
+          scene_start_id: existing.scene_start_id ? (Math.min(scenePos, scenes.find(s => s.id === existing.scene_start_id)?.position ?? scenePos) === scenePos ? activeScene.id : existing.scene_start_id) : activeScene.id,
+          scene_end_id: existing.scene_end_id ? (Math.max(scenePos, scenes.find(s => s.id === existing.scene_end_id)?.position ?? scenePos) === scenePos ? activeScene.id : existing.scene_end_id) : activeScene.id,
         });
       }
       setShowAddPicker(false);
@@ -515,14 +521,14 @@ export function BgmPanel() {
           // タイトル取得失敗時はvideoIdのまま
         }
       }
-      await addBgm({ name: title, bgm_type: 'youtube', bgm_source: videoId, scene_ids: [activeScene.id], auto_play_scene_ids: [activeScene.id], sort_order: insertSort });
+      await addBgm({ name: title, bgm_type: 'youtube', bgm_source: videoId, is_global: false, scene_start_id: activeScene.id, scene_end_id: activeScene.id, auto_play: true, sort_order: insertSort });
     } else {
       const name = assetTitle
         || decodeURIComponent(normalizedUrl.split('/').pop()?.split('?')[0] || '新規BGM').replace(/^\d+_/, '');
-      await addBgm({ name, bgm_type: 'url', bgm_source: normalizedUrl, scene_ids: [activeScene.id], auto_play_scene_ids: [activeScene.id], sort_order: insertSort });
+      await addBgm({ name, bgm_type: 'url', bgm_source: normalizedUrl, is_global: false, scene_start_id: activeScene.id, scene_end_id: activeScene.id, auto_play: true, sort_order: insertSort });
     }
     setShowAddPicker(false);
-  }, [addBgm, updateBgm, bgms, activeScene, selectedIds]);
+  }, [addBgm, updateBgm, bgms, activeScene, selectedIds, scenes]);
 
   return (
     <>
@@ -609,7 +615,6 @@ export function BgmPanel() {
           <BgmTrackRow
             key={track.id}
             track={track}
-            currentSceneId={currentSceneId}
             isSelected={selectedIds.includes(track.id)}
             onClick={handleItemClick}
             onUpdate={updateBgm}
@@ -687,9 +692,10 @@ export function BgmPanel() {
                 pendingRemoveIds.forEach(id => {
                   const track = bgms.find(b => b.id === id);
                   if (track) {
+                    // このシーンをシーン範囲から外す（単純に is_global=true にするか、範囲を狭める）
+                    // 最も単純な実装: is_global=true に変更（ルーム全体で有効に）
                     updateBgm(id, {
-                      scene_ids: track.scene_ids.filter(s => s !== currentSceneId),
-                      auto_play_scene_ids: track.auto_play_scene_ids.filter(s => s !== currentSceneId),
+                      is_global: true,
                       is_playing: false,
                       is_paused: false,
                     });

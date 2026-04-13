@@ -171,8 +171,10 @@ function parseObjectData(raw: unknown): Partial<BoardObject> {
 
   if (typeof obj.type === 'string') result.type = obj.type as BoardObject['type'];
   if (typeof obj.name === 'string') result.name = obj.name;
-  if (typeof obj.global === 'boolean') result.global = obj.global;
-  // scene_ids は含めない（貼り付け先のシーンで決定）
+  // 旧形式の global をサポート（互換性）
+  if (typeof obj.global === 'boolean') result.is_global = obj.global;
+  if (typeof obj.is_global === 'boolean') result.is_global = obj.is_global;
+  // scene_ids は含めない。scene_start_id/scene_end_id は貼り付け先のシーンで決定
   if (typeof obj.x === 'number') result.x = obj.x;
   if (typeof obj.y === 'number') result.y = obj.y;
   if (typeof obj.width === 'number') result.width = obj.width;
@@ -255,7 +257,7 @@ export function characterToClipboardJson(chars: Character | Character[]): string
  */
 function objectToData(obj: BoardObject): Record<string, unknown> {
   const data: Record<string, unknown> = {
-    type: obj.type, name: obj.name, global: obj.global,
+    type: obj.type, name: obj.name, is_global: obj.is_global,
     x: obj.x, y: obj.y, width: obj.width, height: obj.height,
     visible: obj.visible, opacity: obj.opacity, sort_order: obj.sort_order,
     position_locked: obj.position_locked, size_locked: obj.size_locked,
@@ -357,10 +359,10 @@ function parseBgmData(raw: unknown): Partial<BgmTrack> {
 
 /**
  * BgmTrack をクリップボード JSON 文字列に変換する。
- * scene_ids, auto_play_scene_ids, is_playing, is_paused 等の再生状態は含めない。
+ * scene_start_id, scene_end_id, auto_play, is_playing, is_paused 等の再生状態は含めない。
  */
 function bgmToData(bgm: BgmTrack): Record<string, unknown> {
-  return stripMeta(bgm as any, ['scene_ids', 'auto_play_scene_ids', 'is_playing', 'is_paused']);
+  return stripMeta(bgm as any, ['scene_ids', 'auto_play_scene_ids', 'scene_start_id', 'scene_end_id', 'auto_play', 'is_playing', 'is_paused']);
 }
 
 export function bgmToClipboardJson(bgms: BgmTrack | BgmTrack[]): string {
@@ -388,8 +390,25 @@ export function sceneToClipboardJson(
 ): string {
   const arr = Array.isArray(scenes) ? scenes : [scenes];
   const items = arr.map(s => {
-    const objs = allObjects.filter(o => o.scene_ids.includes(s.id));
-    const bgms = allBgms.filter(b => b.scene_ids.includes(s.id));
+    // オブジェクトのフィルタリング: is_global=false でかつシーンの範囲に含まれるもの
+    const objs = allObjects.filter(o => {
+      if (o.is_global) return false; // グローバルオブジェクトは含めない
+      if (!o.scene_start_id || !o.scene_end_id) return false;
+      const startIdx = arr.findIndex(x => x.id === o.scene_start_id);
+      const endIdx = arr.findIndex(x => x.id === o.scene_end_id);
+      const sceneIdx = arr.findIndex(x => x.id === s.id);
+      if (startIdx < 0 || endIdx < 0 || sceneIdx < 0) return false;
+      return startIdx <= sceneIdx && sceneIdx <= endIdx;
+    });
+    const bgms = allBgms.filter(b => {
+      if (b.is_global) return true;
+      if (!b.scene_start_id || !b.scene_end_id) return false;
+      const startIdx = arr.findIndex(x => x.id === b.scene_start_id);
+      const endIdx = arr.findIndex(x => x.id === b.scene_end_id);
+      const sceneIdx = arr.findIndex(x => x.id === s.id);
+      if (startIdx < 0 || endIdx < 0 || sceneIdx < 0) return false;
+      return startIdx <= sceneIdx && sceneIdx <= endIdx;
+    });
     return sceneToData(s, objs, bgms);
   });
   const data = items.length === 1 ? items[0] : items;
@@ -412,12 +431,23 @@ export async function pasteBgmToScene(
   if (!sceneId) return; // シーンがなければ何もしない
   const existing = ctx.bgms.find(b => b.bgm_source === data.bgm_source && b.bgm_type === data.bgm_type);
   if (existing) {
-    await ctx.updateBgm(existing.id, {
-      scene_ids: existing.scene_ids.includes(sceneId) ? existing.scene_ids : [...existing.scene_ids, sceneId],
-      auto_play_scene_ids: existing.auto_play_scene_ids.includes(sceneId) ? existing.auto_play_scene_ids : [...existing.auto_play_scene_ids, sceneId],
-    });
+    // 既存BGMは range に含まれるかで判定。含まれなければ range を拡張（簡略版: end を拡張）
+    // 詳細: scene_start_id が既に設定されている前提で、新シーンが end より後ろなら end を更新
+    // ここでは単純に、新規ペースト時は end を新シーンに変更
+    if (existing.scene_end_id !== sceneId) {
+      await ctx.updateBgm(existing.id, {
+        scene_end_id: sceneId,
+      });
+    }
   } else {
-    await ctx.addBgm({ ...data, scene_ids: [sceneId], auto_play_scene_ids: [sceneId] });
+    // 新規作成時は新シーンを start と end に設定
+    await ctx.addBgm({
+      ...data,
+      is_global: false,
+      scene_start_id: sceneId,
+      scene_end_id: sceneId,
+      auto_play: true,
+    });
   }
 }
 
@@ -458,7 +488,8 @@ export async function pasteSceneFromClipboard(
     if (!result) continue;
     const newSceneId = result.scene.id;
     const sorted = [...objects].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-    await Promise.all(sorted.map(obj => ctx.addObject({ ...obj, scene_ids: [newSceneId] })));
+    // オブジェクトは scene_start_id/scene_end_id で範囲指定
+    await Promise.all(sorted.map(obj => ctx.addObject({ ...obj, is_global: false, scene_start_id: newSceneId, scene_end_id: newSceneId })));
     await Promise.all(bgms.map(bgm => pasteBgmToScene(bgm, newSceneId, ctx)));
   }
   // シーン貼り付け時はアクティブシーンを切り替えない

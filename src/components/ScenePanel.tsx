@@ -202,7 +202,14 @@ export function ScenePanel({
     >
       {scenes.map((scene) => {
         const isSelected = selectedSceneIds.includes(scene.id);
-        const sceneBgms = (bgms ?? []).filter(b => b.scene_ids.includes(scene.id));
+        const sceneBgms = (bgms ?? []).filter(b => {
+          if (b.is_global) return true;
+          if (!b.scene_start_id || !b.scene_end_id) return false;
+          const startPos = scenes.find(s => s.id === b.scene_start_id)?.position;
+          const endPos = scenes.find(s => s.id === b.scene_end_id)?.position;
+          if (startPos === undefined || endPos === undefined) return false;
+          return startPos <= scene.position && scene.position <= endPos;
+        });
         const bgmNames = sceneBgms.map(b => b.name);
         const bgmLabel = bgmNames.length === 0
           ? 'なし'

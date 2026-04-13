@@ -58,7 +58,6 @@ export interface RoomDataContextValue {
   addScene: ReturnType<typeof useScenes>['addScene'];
   updateScene: ReturnType<typeof useScenes>['updateScene'];
   removeScene: ReturnType<typeof useScenes>['removeScene'];
-  reorderScenes: ReturnType<typeof useScenes>['reorderScenes'];
   activateScene: ReturnType<typeof useScenes>['activateScene'];
 
   // --- Characters ---

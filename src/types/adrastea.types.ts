@@ -6,7 +6,7 @@
  *   rooms/{roomId}/pieces/{pieceId}                     → Piece
  *   rooms/{roomId}/messages/{msgId}                     → ChatMessage
  *   rooms/{roomId}/scenes/{sceneId}                     → Scene
- *   rooms/{roomId}/objects/{objectId}                   → BoardObject (global + scene_ids)
+ *   rooms/{roomId}/objects/{objectId}                   → BoardObject (is_global + scene_start_id/scene_end_id)
  *   rooms/{roomId}/bgms/{bgmId}                         → BgmTrack
  *   rooms/{roomId}/characters/{charId}                  → Character
  *   rooms/{roomId}/scenario_texts/{textId}              → ScenarioText
@@ -60,7 +60,7 @@ export interface Scene {
   foreground_width: number;
   foreground_height: number;
   grid_visible?: boolean;
-  sort_order: number;
+  position: number;
   created_at: number;
   updated_at: number;
 }
@@ -120,9 +120,10 @@ export interface BoardObject {
   type: BoardObjectType;
   name: string;
 
-  // スコープ: global=true なら全シーン共通、false なら scene_ids で指定シーンのみ
-  global: boolean;
-  scene_ids: string[];
+  // スコープ: is_global=true ならルームオブジェクト（全シーン共通）、false ならシーンオブジェクト（scene_start_id〜scene_end_id の範囲）
+  is_global: boolean;
+  scene_start_id: string | null;  // is_global=false の時のみ有効（必須）
+  scene_end_id: string | null;    // is_global=false の時のみ有効（必須）
 
   // 位置・サイズ（グリッド単位: 1 = 1マス = GRID_SIZE px）
   x: number;
@@ -204,10 +205,12 @@ export interface BgmTrack {
   bgm_asset_id?: string | null;
   bgm_volume: number;
   bgm_loop: boolean;
-  scene_ids: string[];
+  is_global: boolean;
+  scene_start_id: string | null;
+  scene_end_id: string | null;
   is_playing: boolean;
   is_paused: boolean;
-  auto_play_scene_ids: string[];
+  auto_play: boolean;
   fade_in: boolean;
   fade_in_duration: number;
   sort_order: number;

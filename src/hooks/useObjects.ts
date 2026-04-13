@@ -1,15 +1,26 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { useSupabaseQuery, useSupabaseMutation } from './useSupabaseQuery';
 import { supabase } from '../services/supabase';
-import type { BoardObject } from '../types/adrastea.types';
+import type { BoardObject, Scene } from '../types/adrastea.types';
 import type { ObjectsInject } from '../types/adrastea-persistence';
 import { genId } from '../utils/id';
 import { omitKeys } from '../utils/object';
 import { isLayerSortDebug } from '../utils/debugFlags';
 
+export function isObjectActiveInScene(obj: BoardObject, sceneId: string, scenes: Scene[]): boolean {
+  if (obj.is_global) return true;
+  if (!obj.scene_start_id || !obj.scene_end_id) return false;
+  const targetPos = scenes.find(s => s.id === sceneId)?.position;
+  const startPos = scenes.find(s => s.id === obj.scene_start_id)?.position;
+  const endPos = scenes.find(s => s.id === obj.scene_end_id)?.position;
+  if (targetPos === undefined || startPos === undefined || endPos === undefined) return false;
+  return startPos <= targetPos && targetPos <= endPos;
+}
+
 export function useObjects(
   roomId: string,
   activeSceneId: string | null,
+  scenes: Scene[],
   options?: { inject?: ObjectsInject; initialData?: unknown[]; enabled?: boolean }
 ) {
   const { inject, initialData, enabled } = options ?? {};
@@ -17,7 +28,7 @@ export function useObjects(
   injectRef.current = inject;
   const { data: objectsData, loading: objectsLoading, setData: setObjectsData } = useSupabaseQuery<BoardObject>({
     table: 'objects',
-    columns: 'id,room_id,type,name,global,scene_ids,x,y,width,height,visible,opacity,sort_order,position_locked,size_locked,image_asset_id,background_color,image_fit,color_enabled,text_content,font_size,font_family,letter_spacing,line_height,auto_size,text_align,text_vertical_align,text_color,scale_x,scale_y,rotation,memo,created_at,updated_at',
+    columns: 'id,room_id,type,name,is_global,scene_start_id,scene_end_id,x,y,width,height,visible,opacity,sort_order,position_locked,size_locked,image_asset_id,background_color,image_fit,color_enabled,text_content,font_size,font_family,letter_spacing,line_height,auto_size,text_align,text_vertical_align,text_color,scale_x,scale_y,rotation,memo,created_at,updated_at',
     roomId,
     filter: (q) => q.eq('room_id', roomId),
     enabled: !inject && enabled !== false,
@@ -35,11 +46,11 @@ export function useObjects(
 
 
   const activeObjects = useMemo(() => {
-    if (!activeSceneId) return allObjects.filter((o) => o.global);
+    if (!activeSceneId) return allObjects.filter((o) => o.is_global);
     return allObjects
-      .filter((o) => o.global || o.scene_ids.includes(activeSceneId))
+      .filter((o) => isObjectActiveInScene(o, activeSceneId, scenes))
       .sort((a, b) => a.sort_order - b.sort_order);
-  }, [allObjects, activeSceneId]);
+  }, [allObjects, activeSceneId, scenes]);
 
   const addObject = useCallback(
     async (data: Partial<BoardObject>): Promise<string> => {
@@ -52,17 +63,18 @@ export function useObjects(
         room_id: roomId,
         type,
         name: data.name ?? '新規オブジェクト',
-        global: data.global ?? false,
-        scene_ids: data.scene_ids ?? [],
+        is_global: data.is_global ?? false,
+        scene_start_id: data.scene_start_id ?? null,
+        scene_end_id: data.scene_end_id ?? null,
         x: data.x ?? 50, y: data.y ?? 50,
         width: data.width ?? 4, height: data.height ?? 4,
         visible: data.visible ?? true, opacity: data.opacity ?? 1,
         sort_order: data.sort_order ?? (() => {
-          // デフォルト: 前景(1M)〜キャラクター(2M)の間の一番上
-          const LANDMARK_FG = 1_000_000;
-          const LANDMARK_CL = 2_000_000;
-          const between = allObjects.filter(o => o.sort_order > LANDMARK_FG && o.sort_order < LANDMARK_CL);
-          return between.length > 0 ? Math.max(...between.map(o => o.sort_order)) + 1 : LANDMARK_FG + 1;
+          // デフォルト: 全OBJの最大sort_order + 1（BGは除外）
+          const maxSort = allObjects
+            .filter(o => o.type !== 'background')
+            .reduce((max, o) => Math.max(max, o.sort_order), 0);
+          return maxSort + 1;
         })(),
         position_locked: data.position_locked ?? false,
         size_locked: data.size_locked ?? false,
