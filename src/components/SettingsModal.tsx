@@ -65,7 +65,7 @@ const PANEL_DEFS: PanelDef[] = [
   { id: 'bgm', component: 'bgm', title: 'BGM', permission: 'panel_bgm' },
   { id: 'scenarioText', component: 'scenarioText', title: 'テキストメモ', permission: 'panel_scenarioText' },
   { id: 'cutin', component: 'cutin', title: 'カットイン (開発中)', permission: 'panel_cutin', disabled: true },
-  { id: 'timeline', component: 'timeline', title: 'タイムライン', permission: 'panel_timeline' },
+  { id: 'timeline', component: 'timeline', title: 'タイムライン (開発中)', permission: 'panel_timeline', disabled: true },
 ];
 
 const NAV_ITEMS: Array<{ key: SettingsSection; label: string }> = [
@@ -391,7 +391,7 @@ function LayoutSection({
           borderBottom: `1px solid ${theme.borderSubtle}`,
         }}
       >
-        <span style={{ fontSize: '12px', color: theme.textPrimary }}>
+        <span style={{ fontSize: '12px', color: disabled ? theme.textMuted : theme.textPrimary }}>
           {p.title}
         </span>
         <AdButton

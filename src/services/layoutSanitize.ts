@@ -18,6 +18,7 @@ const VIEW_TO_PERMISSION: Record<string, PermissionKey> = {
   layer: 'panel_layer',
   property: 'panel_property',
   debugConsole: 'panel_debug',
+  timeline: 'panel_timeline',
 };
 
 /** guest は DEFAULT_LAYOUT_GUEST に合わせたホワイトリスト（permissions 上は user 未満でも表示する） */
