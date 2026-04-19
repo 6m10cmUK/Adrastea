@@ -549,6 +549,15 @@ export function useCharacters(
     async (orderedIds: string[]): Promise<void> => {
       const inj = injectRef.current;
       const now = Date.now();
+
+      // 楽観更新: statsData を即座に更新してチラつきを防ぐ
+      setCharacterStatsData((prev) =>
+        prev.map((s) => {
+          const idx = orderedIds.indexOf(s.id);
+          return idx >= 0 ? { ...s, sort_order: idx, updated_at: now } : s;
+        })
+      );
+
       try {
         if (inj) {
           await Promise.all(orderedIds.map((id, i) => inj.update(id, { sort_order: i, updated_at: now })));
@@ -564,7 +573,7 @@ export function useCharacters(
         console.error('reorderLayerCharacters failed:', err);
       }
     },
-    [roomId]
+    [roomId, setCharacterStatsData]
   );
 
   return {

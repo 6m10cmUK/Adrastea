@@ -65,12 +65,18 @@ export function CharacterLayerSection({
   const [draggedHtml, setDraggedHtml] = useState<string>('');
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 外部から characters が変わった時に同期（新規追加・削除等）
-  const prevCharsRef = useRef(characters);
+  // 外部から characters のメンバーが変わった時だけ同期（追加・削除）
+  // 順序だけの変更では localChars を上書きしない（DnD のチラつき防止）
   useEffect(() => {
-    if (prevCharsRef.current !== characters) {
-      prevCharsRef.current = characters;
+    const localIds = new Set(localChars.map(c => c.id));
+    const nextIds = new Set(characters.map(c => c.id));
+    const sameMembers = localIds.size === nextIds.size && [...localIds].every(id => nextIds.has(id));
+    if (!sameMembers) {
       setLocalChars(characters);
+    } else {
+      // メンバーは同じだが、名前やアバター等の属性が変わった場合は反映（順序は localChars を維持）
+      const charMap = new Map(characters.map(c => [c.id, c]));
+      setLocalChars(prev => prev.map(c => charMap.get(c.id) ?? c));
     }
   }, [characters]);
 
