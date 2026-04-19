@@ -5,4 +5,8 @@ export {
   type TimelineRowLabelsProps,
   type TimelineRowLabelItem,
 } from './TimelineRowLabels';
-export { useTimelineBlockDrag, type DragState } from './useTimelineBlockDrag';
+export {
+  useTimelineResize,
+  type ResizeState,
+  type DragMode,
+} from './useTimelineResize';

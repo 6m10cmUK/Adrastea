@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import { theme } from '../../styles/theme';
 import type { BoardObjectType } from '../../types/adrastea.types';
-import type { DragMode } from './useTimelineBlockDrag';
+import type { DragMode } from './useTimelineResize';
 import {
   Image, Type, Layers, Mountain,
 } from 'lucide-react';
@@ -29,7 +30,7 @@ export interface TimelineBlockProps {
   rowType: 'object' | 'bgm';
   isDragPreview?: boolean;
   onSelect: (id: string, multiselect: boolean) => void;
-  onDragStart: (blockId: string, mode: DragMode, startX: number, startY: number) => void;
+  onResizeStart: (blockId: string, mode: DragMode, startX: number) => void;
 }
 
 export const TimelineBlock: React.FC<TimelineBlockProps> = ({
@@ -47,11 +48,18 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
   rowType,
   isDragPreview,
   onSelect,
-  onDragStart,
+  onResizeStart,
 }) => {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: rowId,
+    disabled: !!isDragPreview,
+  });
+
   const left = startIdx * columnWidth;
   const width = (endIdx - startIdx + 1) * columnWidth;
   const top = rowIdx * rowHeight;
+
+  const showGhostStyle = !!isDragPreview || isDragging;
 
   const getBackgroundColor = () => {
     if (isDragPreview) return 'rgba(100, 150, 255, 0.3)';
@@ -71,26 +79,14 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
     [rowId, onSelect, isDragPreview]
   );
 
-  const handleCenterMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (isDragPreview) return;
-      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-      const relX = e.clientX - rect.left;
-      if (relX <= 6 || relX >= rect.width - 6) return;
-      e.preventDefault();
-      onDragStart(rowId, 'move', e.clientX, e.clientY);
-    },
-    [rowId, onDragStart, isDragPreview]
-  );
-
-  const handleEdgeMouseDown = useCallback(
-    (mode: DragMode) => (e: React.MouseEvent) => {
+  const handleEdgePointerDown = useCallback(
+    (mode: DragMode) => (e: React.PointerEvent) => {
       if (isDragPreview) return;
       e.preventDefault();
       e.stopPropagation();
-      onDragStart(rowId, mode, e.clientX, e.clientY);
+      onResizeStart(rowId, mode, e.clientX);
     },
-    [rowId, onDragStart, isDragPreview]
+    [rowId, onResizeStart, isDragPreview]
   );
 
   const IconComponent = objectType ? TYPE_ICONS[objectType] ?? Image : null;
@@ -100,8 +96,14 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
       ? theme.accentBgSubtle
       : 'transparent';
 
+  // DragOverlay がプレビューを表示するので、元ブロックは transform を適用しない（ゴーストとして元の位置に残す）
+  const dndTransformStyle: React.CSSProperties = {};
+
   return (
     <div
+      ref={setNodeRef}
+      {...attributes}
+      {...(isDragPreview ? {} : listeners)}
       style={{
         position: 'absolute',
         left: `${left}px`,
@@ -113,19 +115,20 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
           ? `2px solid ${theme.accentHighlight}`
           : `1px solid ${theme.borderSubtle}`,
         borderRadius: '2px',
-        cursor: isDragPreview ? 'default' : 'grab',
+        cursor: isDragPreview ? 'default' : isDragging ? 'grabbing' : 'grab',
         display: 'flex',
         alignItems: 'center',
         gap: '4px',
         padding: '0 8px',
         overflow: 'hidden',
         boxSizing: 'border-box',
-        opacity: isDragPreview ? 0.5 : 1,
+        opacity: showGhostStyle ? 0.5 : 1,
         pointerEvents: isDragPreview ? 'none' : 'auto',
-        zIndex: isDragPreview ? 10 : 1,
+        zIndex: isDragPreview ? 10 : isDragging ? 20 : 1,
+        touchAction: 'none',
+        ...dndTransformStyle,
       }}
       onClick={handleClick}
-      onMouseDown={handleCenterMouseDown}
     >
       {/* タイプアイコン */}
       {IconComponent && (
@@ -179,7 +182,7 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
             height: '100%',
             cursor: 'col-resize',
           }}
-          onMouseDown={handleEdgeMouseDown('resize-start')}
+          onPointerDown={handleEdgePointerDown('resize-start')}
         />
       )}
 
@@ -194,7 +197,7 @@ export const TimelineBlock: React.FC<TimelineBlockProps> = ({
             height: '100%',
             cursor: 'col-resize',
           }}
-          onMouseDown={handleEdgeMouseDown('resize-end')}
+          onPointerDown={handleEdgePointerDown('resize-end')}
         />
       )}
     </div>

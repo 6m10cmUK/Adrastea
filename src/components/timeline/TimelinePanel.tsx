@@ -1,16 +1,26 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DragMoveEvent,
+} from '@dnd-kit/core';
 import type { Scene, BoardObject, BoardObjectType, BgmTrack } from '../../types/adrastea.types';
 import { useAdrasteaContext } from '../../contexts/AdrasteaContext';
 import { resolveAssetId } from '../../hooks/useAssets';
 import { theme } from '../../styles/theme';
 import { TimelineHeader } from './TimelineHeader';
 import { TimelineBlock } from './TimelineBlock';
-import { useTimelineBlockDrag } from './useTimelineBlockDrag';
-import type { DragMode } from './useTimelineBlockDrag';
+import { useTimelineResize } from './useTimelineResize';
+import type { DragMode } from './useTimelineResize';
 
 // 定数
 const COLUMN_WIDTH = 136;   // px per scene
 const ROW_HEIGHT = 28;      // px per row
+const GAP_HEIGHT = 14;      // px（トラック間ギャップ表示）
 const HEADER_HEIGHT = 32;   // px
 const LABEL_WIDTH = 40;     // px (トラック番号のみ)
 
@@ -32,6 +42,98 @@ interface TimelineBlockInfo {
   rowType: 'object' | 'bgm';
 }
 
+function isSpecialTimelineObjectType(t: BoardObjectType | undefined): boolean {
+  return t === 'background' || t === 'foreground' || t === 'characters_layer';
+}
+
+function isTrackReservedForMove(blocks: TimelineBlockInfo[], rowIdx: number): boolean {
+  return blocks.some(
+    (b) =>
+      b.rowIdx === rowIdx &&
+      b.rowType === 'object' &&
+      isSpecialTimelineObjectType(b.objectType),
+  );
+}
+
+function isGlobalMixInvalid(
+  blocks: TimelineBlockInfo[],
+  dragged: TimelineBlockInfo,
+  targetRowIdx: number,
+): boolean {
+  const onRow = blocks.filter(
+    (b) =>
+      b.rowIdx === targetRowIdx &&
+      b.rowType === 'object' &&
+      b.id !== dragged.id,
+  );
+  if (onRow.length === 0) return false;
+  return onRow.some((b) => b.isGlobal !== dragged.isGlobal);
+}
+
+/** ギャップ g の上端〜下端（グリッド座標） */
+function gapVerticalRange(g: number): { top: number; bottom: number } {
+  const top = g * ROW_HEIGHT;
+  return { top, bottom: top + GAP_HEIGHT };
+}
+
+function yInsideGap(y: number, g: number): boolean {
+  const { top, bottom } = gapVerticalRange(g);
+  return y >= top && y < bottom;
+}
+
+/** オブジェクトトラック用ギャップ index 0..objectTrackCount のうち y が属するもの（なければ null） */
+function hitTestObjectGap(y: number, objectTrackCount: number): number | null {
+  for (let g = 0; g <= objectTrackCount; g++) {
+    if (yInsideGap(y, g)) return g;
+  }
+  return null;
+}
+
+function nearestObjectGapIndex(y: number, objectTrackCount: number): number {
+  let best = 0;
+  let bestDist = Infinity;
+  for (let g = 0; g <= objectTrackCount; g++) {
+    const { top, bottom } = gapVerticalRange(g);
+    const mid = (top + bottom) / 2;
+    const d = Math.abs(y - mid);
+    if (d < bestDist) {
+      bestDist = d;
+      best = g;
+    }
+  }
+  return best;
+}
+
+function buildSortUpdatesForGapInsert(
+  allObjects: BoardObject[],
+  draggedId: string,
+  gapIdx: number,
+): { id: string; sort: number }[] {
+  const uniqueDesc = [...new Set(allObjects.map((o) => o.sort_order))].sort((a, b) => b - a);
+  const slots: string[][] = uniqueDesc.map((so) =>
+    allObjects.filter((o) => o.sort_order === so).map((o) => o.id),
+  );
+  for (const row of slots) {
+    const ix = row.indexOf(draggedId);
+    if (ix >= 0) row.splice(ix, 1);
+  }
+  const compacted = slots.filter((row) => row.length > 0);
+  const insertIdx = Math.min(Math.max(0, gapIdx), compacted.length);
+  const newRows = [...compacted.slice(0, insertIdx), [draggedId], ...compacted.slice(insertIdx)];
+  const total = newRows.length;
+  const updates: { id: string; sort: number }[] = [];
+  newRows.forEach((ids, visualIdx) => {
+    const newSort = total - 1 - visualIdx;
+    for (const id of ids) {
+      const o = allObjects.find((x) => x.id === id);
+      if (o && o.sort_order !== newSort) {
+        updates.push({ id, sort: newSort });
+      }
+    }
+  });
+  return updates;
+}
+
 /**
  * TimelinePanel
  * タイムラインパネルの統合コンポーネント。
@@ -46,6 +148,7 @@ export const TimelinePanel: React.FC = () => {
     setSelectedObjectIds,
     updateObject,
     updateBgm,
+    batchUpdateSort,
     activateScene,
     activeScene,
   } = useAdrasteaContext();
@@ -121,6 +224,18 @@ export const TimelinePanel: React.FC = () => {
     };
   }, [scenes, allObjects, bgms]);
 
+  const objectTrackCount = useMemo(
+    () => tracks.filter((t) => t.type === 'object').length,
+    [tracks],
+  );
+
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [nearestGapIdx, setNearestGapIdx] = useState<number | null>(null);
+  const [dragDelta, setDragDelta] = useState<{ x: number; y: number } | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const nearestGapIdxRef = useRef<number | null>(null);
+  const lastGridYRef = useRef<number | null>(null);
+
   /**
    * シーン範囲を計算
    */
@@ -161,7 +276,7 @@ export const TimelinePanel: React.FC = () => {
   /**
    * ドラッグ: 移動完了時のコールバック
    */
-  const handleDragMove = useCallback(
+  const handleBlockMoveEnd = useCallback(
     async (blockId: string, newStartId: string | null, newEndId: string | null, newRowIdx: number | null) => {
       // ブロックがOBJかBGMか判定
       const obj = allObjects.find(o => o.id === blockId);
@@ -203,24 +318,187 @@ export const TimelinePanel: React.FC = () => {
     [scenes]
   );
 
-  const { dragState, getDragPreview, handleDragStart: startDrag, handleMouseMove, handleMouseUp } = useTimelineBlockDrag(
-    COLUMN_WIDTH,
-    ROW_HEIGHT,
-    sortedScenes,
-    tracks.length,
-    handleDragMove,
+  const handleResizeCommit = useCallback(
+    async (blockId: string, newStartId: string | null, newEndId: string | null) => {
+      const obj = allObjects.find(o => o.id === blockId);
+      const bgm = bgms.find(b => b.id === blockId);
+      if (obj && !obj.is_global && newStartId && newEndId) {
+        await updateObject(blockId, { scene_start_id: newStartId, scene_end_id: newEndId });
+      } else if (bgm && !bgm.is_global && newStartId && newEndId) {
+        await updateBgm(blockId, { scene_start_id: newStartId, scene_end_id: newEndId });
+      }
+    },
+    [allObjects, bgms, updateObject, updateBgm]
+  );
+
+  const {
+    resizeState,
+    getResizePreview,
+    startResize,
+    handleMouseMove: handleResizeMouseMove,
+    handleMouseUp: handleResizeMouseUp,
+  } = useTimelineResize(COLUMN_WIDTH, sortedScenes, handleResizeCommit);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  );
+
+  const resetDragUi = useCallback(() => {
+    setActiveDragId(null);
+    setNearestGapIdx(null);
+    setDragDelta(null);
+    nearestGapIdxRef.current = null;
+    lastGridYRef.current = null;
+  }, []);
+
+  const handleDndDragStart = useCallback((event: DragStartEvent) => {
+    if (!event.active?.id) return;
+    setActiveDragId(String(event.active.id));
+    nearestGapIdxRef.current = null;
+    lastGridYRef.current = null;
+    setNearestGapIdx(null);
+  }, []);
+
+  const handleDndDragMove = useCallback((event: DragMoveEvent) => {
+    setDragDelta(event.delta);
+  }, []);
+
+  useEffect(() => {
+    if (!activeDragId) return;
+
+    const onPointerMove = (e: PointerEvent) => {
+      const scrollEl = scrollAreaRef.current;
+      if (!scrollEl) return;
+
+      const block = blocks.find((b) => b.id === activeDragId);
+      if (
+        !block ||
+        block.rowType !== 'object' ||
+        isSpecialTimelineObjectType(block.objectType)
+      ) {
+        return;
+      }
+
+      const rect = scrollEl.getBoundingClientRect();
+      const y = e.clientY - rect.top + scrollEl.scrollTop;
+      lastGridYRef.current = y;
+
+      const inStripe = hitTestObjectGap(y, objectTrackCount) !== null;
+      const nextNearest = nearestObjectGapIndex(y, objectTrackCount);
+      const next = inStripe ? nextNearest : null;
+      if (nearestGapIdxRef.current === next) return;
+      nearestGapIdxRef.current = next;
+      setNearestGapIdx(next);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    return () => window.removeEventListener('pointermove', onPointerMove);
+  }, [activeDragId, blocks, objectTrackCount]);
+
+  const handleDndDragCancel = useCallback(() => {
+    resetDragUi();
+  }, [resetDragUi]);
+
+  const handleDndDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, delta } = event;
+      const savedNearest = nearestGapIdxRef.current;
+      resetDragUi();
+
+      if (!active?.id) return;
+      const blockId = String(active.id);
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block) return;
+
+      const lockedVertical =
+        block.rowType === 'object' && isSpecialTimelineObjectType(block.objectType);
+      const isBgm = block.rowType === 'bgm';
+      const dy = lockedVertical ? 0 : delta.y;
+      const dx = delta.x;
+
+      const deltaCol = Math.round(dx / COLUMN_WIDTH);
+      const deltaRow =
+        lockedVertical || isBgm ? 0 : Math.round(dy / ROW_HEIGHT);
+
+      const blockLen = block.endIdx - block.startIdx;
+      const newStartIdx = Math.max(
+        0,
+        Math.min(block.startIdx + deltaCol, sortedScenes.length - 1 - blockLen),
+      );
+      const newEndIdx = newStartIdx + blockLen;
+
+      const newStartId = block.isGlobal ? null : (sortedScenes[newStartIdx]?.id ?? null);
+      const newEndId = block.isGlobal ? null : (sortedScenes[newEndIdx]?.id ?? null);
+
+      if (lockedVertical) {
+        void handleBlockMoveEnd(blockId, newStartId, newEndId, null);
+        return;
+      }
+
+      if (isBgm) {
+        void handleBlockMoveEnd(blockId, newStartId, newEndId, null);
+        return;
+      }
+
+      if (savedNearest !== null) {
+        const updates = buildSortUpdatesForGapInsert(allObjects, blockId, savedNearest);
+        void (async () => {
+          if (updates.length > 0) {
+            await batchUpdateSort(updates);
+          }
+          await handleBlockMoveEnd(blockId, newStartId, newEndId, null);
+        })();
+        return;
+      }
+
+      let newRowIdx = Math.max(0, Math.min(block.rowIdx + deltaRow, tracks.length - 1));
+      let rowIdxChanged = newRowIdx !== block.rowIdx;
+
+      if (rowIdxChanged) {
+        const targetTrack = tracks[newRowIdx];
+        if (targetTrack?.type !== 'object') {
+          newRowIdx = block.rowIdx;
+          rowIdxChanged = false;
+        } else if (isTrackReservedForMove(blocks, newRowIdx)) {
+          newRowIdx = block.rowIdx;
+          rowIdxChanged = false;
+        } else if (isGlobalMixInvalid(blocks, block, newRowIdx)) {
+          newRowIdx = block.rowIdx;
+          rowIdxChanged = false;
+        }
+      }
+
+      void handleBlockMoveEnd(
+        blockId,
+        newStartId,
+        newEndId,
+        rowIdxChanged ? newRowIdx : null,
+      );
+    },
+    [
+      allObjects,
+      batchUpdateSort,
+      blocks,
+      handleBlockMoveEnd,
+      objectTrackCount,
+      resetDragUi,
+      sortedScenes,
+      tracks,
+    ],
   );
 
   /**
-   * ブロックからのドラッグ開始
+   * ブロックからのリサイズ開始
    */
-  const handleBlockDragStart = useCallback(
-    (blockId: string, mode: DragMode, startX: number, startY: number) => {
+  const handleBlockResizeStart = useCallback(
+    (blockId: string, mode: DragMode, startX: number) => {
       const block = blocks.find(b => b.id === blockId);
       if (!block) return;
-      startDrag(blockId, mode, startX, startY, block.startIdx, block.endIdx, block.rowIdx);
+      startResize(blockId, mode, startX, block.startIdx, block.endIdx);
     },
-    [blocks, startDrag]
+    [blocks, startResize]
   );
 
   /**
@@ -277,6 +555,9 @@ export const TimelinePanel: React.FC = () => {
   };
 
   const activeSceneId = activeScene?.id || null;
+  const activeDragBlock = activeDragId
+    ? blocks.find((b) => b.id === activeDragId) ?? null
+    : null;
 
   return (
     <div
@@ -373,6 +654,7 @@ export const TimelinePanel: React.FC = () => {
           }}
         >
           <div
+            ref={scrollAreaRef}
             style={{
               flex: 1,
               position: 'relative',
@@ -380,72 +662,166 @@ export const TimelinePanel: React.FC = () => {
             }}
           >
             {/* グリッドコンテナ */}
-            <div
-              style={{
-                position: 'relative',
-                width: `${gridWidth}px`,
-                height: `${gridHeight}px`,
-                backgroundColor: theme.bgBase,
-              }}
-              onMouseMove={(e) => handleMouseMove(e.clientX, e.clientY)}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDndDragStart}
+              onDragMove={handleDndDragMove}
+              onDragEnd={handleDndDragEnd}
+              onDragCancel={handleDndDragCancel}
             >
-              {/* グリッド線 */}
-              {renderGrid()}
+              <div
+                style={{
+                  position: 'relative',
+                  width: `${gridWidth}px`,
+                  height: `${gridHeight}px`,
+                  backgroundColor: theme.bgBase,
+                }}
+                onMouseMove={(e) => handleResizeMouseMove(e.clientX)}
+                onMouseUp={handleResizeMouseUp}
+                onMouseLeave={handleResizeMouseUp}
+              >
+                {/* グリッド線 */}
+                {renderGrid()}
 
-              {/* ブロック */}
-              {blocks.map((block) => {
-                // ドラッグ中のブロックは元の位置に半透明で表示
-                const isDragging = dragState?.blockId === block.id;
-                return (
-                  <TimelineBlock
-                    key={block.id}
-                    rowId={block.id}
-                    name={block.name}
-                    imageUrl={block.imageUrl}
-                    objectType={block.objectType}
-                    startIdx={block.startIdx}
-                    endIdx={block.endIdx}
-                    rowIdx={block.rowIdx}
-                    columnWidth={COLUMN_WIDTH}
-                    rowHeight={ROW_HEIGHT}
-                    isSelected={selectedObjectIds.includes(block.id)}
-                    isGlobal={block.isGlobal}
-                    rowType={block.rowType}
-                    isDragPreview={isDragging}
-                    onSelect={handleBlockSelect}
-                    onDragStart={handleBlockDragStart}
-                  />
-                );
-              })}
-              {/* ドラッグプレビュー */}
-              {(() => {
-                const preview = getDragPreview();
-                if (!preview || !dragState) return null;
-                const block = blocks.find(b => b.id === dragState.blockId);
-                if (!block) return null;
-                return (
-                  <TimelineBlock
-                    key="drag-preview"
-                    rowId={dragState.blockId}
-                    name={block.name}
-                    imageUrl={block.imageUrl}
-                    objectType={block.objectType}
-                    startIdx={preview.startIdx}
-                    endIdx={preview.endIdx}
-                    rowIdx={preview.rowIdx}
-                    columnWidth={COLUMN_WIDTH}
-                    rowHeight={ROW_HEIGHT}
-                    isSelected={true}
-                    isGlobal={block.isGlobal}
-                    rowType={block.rowType}
-                    onSelect={() => {}}
-                    onDragStart={() => {}}
-                  />
-                );
-              })()}
-            </div>
+                {activeDragId &&
+                  (() => {
+                    const dragBlock = blocks.find((b) => b.id === activeDragId);
+                    if (
+                      !dragBlock ||
+                      dragBlock.rowType !== 'object' ||
+                      isSpecialTimelineObjectType(dragBlock.objectType)
+                    ) {
+                      return null;
+                    }
+                    const count = objectTrackCount;
+                    return Array.from({ length: count + 1 }, (_, gapIdx) => (
+                      <div
+                        key={`gap-${gapIdx}`}
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: `${gapIdx * ROW_HEIGHT}px`,
+                          width: `${gridWidth}px`,
+                          height: `${GAP_HEIGHT}px`,
+                          backgroundColor:
+                            gapIdx === nearestGapIdx ? theme.accentHighlight : theme.accentBgSubtle,
+                          opacity: gapIdx === nearestGapIdx ? 0.6 : 0.2,
+                          pointerEvents: 'none',
+                          zIndex: 5,
+                          borderRadius: '2px',
+                          transition: 'opacity 0.1s, background-color 0.1s',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    ));
+                  })()}
+
+                {/* ブロック */}
+                {blocks.map((block) => {
+                  const isResizeGhost = resizeState?.blockId === block.id;
+                  return (
+                    <TimelineBlock
+                      key={block.id}
+                      rowId={block.id}
+                      name={block.name}
+                      imageUrl={block.imageUrl}
+                      objectType={block.objectType}
+                      startIdx={block.startIdx}
+                      endIdx={block.endIdx}
+                      rowIdx={block.rowIdx}
+                      columnWidth={COLUMN_WIDTH}
+                      rowHeight={ROW_HEIGHT}
+                      isSelected={selectedObjectIds.includes(block.id)}
+                      isGlobal={block.isGlobal}
+                      rowType={block.rowType}
+                      isDragPreview={isResizeGhost}
+                      onSelect={handleBlockSelect}
+                      onResizeStart={handleBlockResizeStart}
+                    />
+                  );
+                })}
+                {/* リサイズプレビュー */}
+                {(() => {
+                  const preview = getResizePreview();
+                  if (!preview || !resizeState) return null;
+                  const block = blocks.find(b => b.id === resizeState.blockId);
+                  if (!block) return null;
+                  return (
+                    <TimelineBlock
+                      key="resize-preview"
+                      rowId={resizeState.blockId}
+                      name={block.name}
+                      imageUrl={block.imageUrl}
+                      objectType={block.objectType}
+                      startIdx={preview.startIdx}
+                      endIdx={preview.endIdx}
+                      rowIdx={block.rowIdx}
+                      columnWidth={COLUMN_WIDTH}
+                      rowHeight={ROW_HEIGHT}
+                      isSelected={true}
+                      isGlobal={block.isGlobal}
+                      rowType={block.rowType}
+                      isDragPreview
+                      onSelect={() => {}}
+                      onResizeStart={() => {}}
+                    />
+                  );
+                })()}
+
+                {/* ドラッグオーバーレイ（グリッド内 absolute 配置） */}
+                {activeDragBlock && dragDelta && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${activeDragBlock.startIdx * COLUMN_WIDTH + dragDelta.x}px`,
+                      top: `${activeDragBlock.rowIdx * ROW_HEIGHT + dragDelta.y}px`,
+                      width: `${(activeDragBlock.endIdx - activeDragBlock.startIdx + 1) * COLUMN_WIDTH}px`,
+                      height: `${ROW_HEIGHT}px`,
+                      boxSizing: 'border-box',
+                      backgroundColor: 'rgba(100, 150, 255, 0.7)',
+                      border: `2px solid ${theme.accentHighlight}`,
+                      borderRadius: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '0 8px',
+                      overflow: 'hidden',
+                      pointerEvents: 'none',
+                      zIndex: 100,
+                    }}
+                  >
+                    {activeDragBlock.imageUrl ? (
+                      <img
+                        src={activeDragBlock.imageUrl}
+                        alt=""
+                        style={{
+                          flexShrink: 0,
+                          width: '18px',
+                          height: '18px',
+                          objectFit: 'contain',
+                          objectPosition: 'center center',
+                          borderRadius: '2px',
+                          border: `1px solid ${theme.border}`,
+                        }}
+                      />
+                    ) : null}
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: '10px',
+                        color: theme.textPrimary,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {activeDragBlock.name}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </DndContext>
           </div>
         </div>
       </div>
