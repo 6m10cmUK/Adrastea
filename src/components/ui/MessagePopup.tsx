@@ -8,45 +8,84 @@ interface MessagePopupProps {
   charColor?: string | null;
 }
 
+const FONT_SIZE = 13;
+const LINE_HEIGHT = 1.4;
+const VISIBLE_LINES = 3;
+const TEXT_AREA_HEIGHT = Math.round(FONT_SIZE * LINE_HEIGHT * VISIBLE_LINES);
+const SCROLL_SPEED_PX_PER_SEC = 25;
+const PAUSE_BEFORE_SCROLL_MS = 1500;
+const PAUSE_AFTER_SCROLL_MS = 2000;
+const DEFAULT_DISPLAY_MS = 30000;
+
 export function MessagePopup({ message, charColor }: MessagePopupProps) {
-  const [display, setDisplay] = useState<{ sender_name: string; content: string; sender_avatar_asset_id?: string | null } | null>(null);
+  const [display, setDisplay] = useState<MessagePopupProps['message']>(null);
   const [phase, setPhase] = useState<'hidden' | 'enter' | 'visible' | 'exit'>('hidden');
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [scrollDuration, setScrollDuration] = useState(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const textRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string>('');
 
   useEffect(() => {
     if (!message) return;
 
-    // メッセージの同一性チェック（sender_name + content で簡易判定）
     const msgId = `${message.sender_name}:${message.content}`;
     if (msgId === prevIdRef.current) return;
     prevIdRef.current = msgId;
 
-    // タイマークリア
-    if (timerRef.current) clearTimeout(timerRef.current);
+    // タイマー全クリア
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
 
+    setScrollOffset(0);
+    setScrollDuration(0);
     setDisplay(message);
     setPhase('enter');
 
-    // enter → visible（アニメーション完了後）
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setPhase('visible');
-      });
+      requestAnimationFrame(() => setPhase('visible'));
     });
 
-    // 30秒後にフェードアウト
-    timerRef.current = setTimeout(() => {
+    const exitPopup = () => {
       setPhase('exit');
-      // フェードアウト完了後に非表示
-      setTimeout(() => {
+      const t = setTimeout(() => {
         setPhase('hidden');
         setDisplay(null);
       }, 500);
-    }, 30000);
+      timersRef.current.push(t);
+    };
+
+    // transition 完了を待ってから高さ測定 → スクロール開始
+    const measureAndStart = () => {
+      const el = textRef.current;
+      if (!el) return;
+      const overflow = el.scrollHeight - el.clientHeight;
+
+      if (overflow > 0) {
+        const duration = overflow / SCROLL_SPEED_PX_PER_SEC;
+        const t1 = setTimeout(() => {
+          setScrollOffset(overflow);
+          setScrollDuration(duration);
+        }, PAUSE_BEFORE_SCROLL_MS);
+        timersRef.current.push(t1);
+
+        const t2 = setTimeout(
+          exitPopup,
+          PAUSE_BEFORE_SCROLL_MS + duration * 1000 + PAUSE_AFTER_SCROLL_MS,
+        );
+        timersRef.current.push(t2);
+      } else {
+        const t = setTimeout(exitPopup, DEFAULT_DISPLAY_MS);
+        timersRef.current.push(t);
+      }
+    };
+
+    const mt = setTimeout(measureAndStart, 50);
+    timersRef.current.push(mt);
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
     };
   }, [message]);
 
@@ -58,12 +97,14 @@ export function MessagePopup({ message, charColor }: MessagePopupProps) {
   return (
     <div
       onClick={() => {
-        if (timerRef.current) clearTimeout(timerRef.current);
+        timersRef.current.forEach(clearTimeout);
+        timersRef.current = [];
         setPhase('exit');
-        setTimeout(() => {
+        const t = setTimeout(() => {
           setPhase('hidden');
           setDisplay(null);
         }, 500);
+        timersRef.current.push(t);
       }}
       style={{
         position: 'absolute',
@@ -103,17 +144,27 @@ export function MessagePopup({ message, charColor }: MessagePopupProps) {
             {display.sender_name}
           </span>
         </div>
-        <span style={{
-          fontSize: '13px',
-          color: theme.textPrimary,
-          wordBreak: 'break-word',
-          display: '-webkit-box',
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}>
-          {parseContent(display.content)}
-        </span>
+        <div
+          ref={textRef}
+          style={{
+            fontSize: `${FONT_SIZE}px`,
+            lineHeight: LINE_HEIGHT,
+            color: theme.textPrimary,
+            wordBreak: 'break-word',
+            height: `${TEXT_AREA_HEIGHT}px`,
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        >
+          <div
+            style={{
+              transform: `translateY(-${scrollOffset}px)`,
+              transition: scrollDuration > 0 ? `transform ${scrollDuration}s linear` : 'none',
+            }}
+          >
+            {parseContent(display.content)}
+          </div>
+        </div>
       </div>
     </div>
   );
